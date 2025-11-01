@@ -120,10 +120,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // If kind is verify_link but no explicit link found, try parse from message
       if (kind === 'verify_link' && !verifyLink) {
-        // try to find a long netflix url pattern
         const candidate = extractFirstUrl(JSON.stringify(data));
         if (candidate) {
-          // use candidate
+          // could assign candidate if you want stricter fallback:
+          // verifyLink = candidate;
         }
       }
 
@@ -133,13 +133,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (kind === 'login_code') {
         displayLink = null;
-
         if (!displayCode) {
           return showWarn('Chưa có mã đăng nhập, vui lòng bấm lại.');
         }
       } else if (kind === 'verify_link') {
         displayCode = null;
-
         if (!displayLink) {
           return showWarn('Chưa có mã hộ gia đình, hãy bấm lại.');
         }
