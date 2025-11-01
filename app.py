@@ -1,8 +1,9 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 from tuki_persistent import TukiPersistent
 import config
+import re
 
 # Flask init
 app = Flask(__name__)
@@ -11,6 +12,18 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = config.SECRET_KEY
 
 db = SQLAlchemy(app)
+
+
+def _parse_timestamp_candidates(ts_raw: str):
+    if not ts_raw:
+        return "", ""
+    for fmt in ("%a, %d %b %Y %H:%M:%S", "%a, %d %b %Y %H:%M:%S %Z", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = datetime.strptime(ts_raw, fmt)
+            return ts_raw, dt.isoformat()
+        except ValueError:
+            continue
+    return ts_raw, ""
 
 # === DATABASE MODEL ===
 class Phone(db.Model):
@@ -68,25 +81,61 @@ def api_fetch():
         result = worker.fetch(email=email, kind=kind)
         print(f"[API] trả về: {result}")
 
-        # 🧩 Chỉ giữ lại mã và thời gian, bỏ hết text dư
-        if isinstance(result, dict):
-            code = result.get("code") or result.get("result") or ""
-            timestamp = result.get("timestamp") or ""
-        elif isinstance(result, str):
-            # nếu worker trả về chuỗi thô, tự tách số và thời gian
-            import re
-            code_match = re.search(r"(\d{3,6})", result)
-            time_match = re.search(r"\w{3},\s\d{1,2}\s\w{3}\s\d{4}\s[\d:]+", result)
-            code = code_match.group(1) if code_match else ""
-            timestamp = time_match.group(0) if time_match else ""
-        else:
-            code, timestamp = "", ""
+        # chuẩn bị thời gian dự phòng từ server (giờ địa phương của server)
+        server_now = datetime.now(timezone.utc).astimezone()
+        fallback_raw = server_now.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        fallback_iso = server_now.isoformat()
 
-        return jsonify({
+        code = ""
+        content = ""
+        timestamp_raw = ""
+        timestamp_iso = ""
+        verify_link = ""
+
+        if isinstance(result, dict):
+            if result.get("success") is False:
+                message = result.get("message") or "Phản hồi không thành công từ worker"
+                return jsonify({"success": False, "message": message}), 502
+
+            code = (result.get("code") or result.get("result") or "").strip()
+            content = result.get("content") or ""
+            timestamp_raw = result.get("received_at_raw") or result.get("timestamp") or ""
+            timestamp_iso = result.get("received_at") or result.get("timestamp_iso") or ""
+            verify_link = result.get("verify_link") or result.get("link") or ""
+
+        elif isinstance(result, str):
+            code_match = re.search(r"(\d{3,6})", result)
+            time_match = re.search(r"\w{3},\s\d{1,2}\s\w{3}\s\d{4}\s[\d:]+(?:\s\w+)?", result)
+            code = code_match.group(1) if code_match else ""
+            timestamp_raw = time_match.group(0) if time_match else ""
+            content = result
+
+        timestamp_raw, parsed_iso = _parse_timestamp_candidates(timestamp_raw)
+        if parsed_iso and not timestamp_iso:
+            timestamp_iso = parsed_iso
+
+        if not timestamp_raw and timestamp_iso:
+            timestamp_raw = timestamp_iso
+
+        if not timestamp_raw and not timestamp_iso:
+            timestamp_raw = fallback_raw
+            timestamp_iso = fallback_iso
+
+        response_payload = {
             "success": True,
             "code": code,
-            "timestamp": timestamp or datetime.now().strftime("%a, %d %b %Y %H:%M:%S")
-        })
+            "content": content,
+            "verify_link": verify_link,
+            "received_at_raw": timestamp_raw,
+            "received_at": timestamp_iso,
+            "timestamp_raw": timestamp_raw,
+            "timestamp_iso": timestamp_iso,
+            "timestamp": timestamp_raw,
+            "server_time_raw": fallback_raw,
+            "server_time_iso": fallback_iso,
+        }
+
+        return jsonify(response_payload)
 
     except Exception as e:
         import traceback

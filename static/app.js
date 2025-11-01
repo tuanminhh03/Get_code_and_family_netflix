@@ -23,14 +23,22 @@ document.addEventListener('DOMContentLoaded', () => {
     return m ? m[0] : null;
   }
 
-  // helper: format timestamp (fallback to now)
-  function formatTimestamp(ts) {
-    if (!ts) return new Date().toLocaleString();
-    try {
-      const d = new Date(ts);
-      if (!isNaN(d)) return d.toLocaleString();
-      return ts;
-    } catch (e) { return ts; }
+  function resolveDisplayTime(data) {
+    const raw = data?.received_at_raw || data?.timestamp_raw || data?.timestamp || null;
+    const iso = data?.received_at || data?.timestamp_iso || null;
+    const serverRaw = data?.server_time_raw || null;
+
+    if (raw) return raw;
+    if (serverRaw) return serverRaw;
+    if (iso) {
+      try {
+        const d = new Date(iso);
+        if (!isNaN(d)) return d.toLocaleString();
+      } catch (e) {}
+      return iso;
+    }
+
+    return new Date().toLocaleString();
   }
 
   function setLoading(msg = 'Đang lấy dữ liệu...') {
@@ -115,8 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const code = (data.code && String(data.code).trim())
         || (data.content && (data.content.match(/\b(\d{3,6})\b/) || [])[1])
         || null;
-      const timeRaw = data.received_at_raw || data.received_at || data.timestamp || data.time || null;
-      const time = timeRaw ? formatTimestamp(timeRaw) : formatTimestamp(null);
+      const time = resolveDisplayTime(data);
 
       // If kind is verify_link but no explicit link found, try parse from message
       if (kind === 'verify_link' && !verifyLink) {
