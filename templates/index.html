@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h1>Lấy mã đăng nhập</h1>
+<p class="subtle">Giao diện tối ưu hiệu năng — thao tác một chạm</p>
+
+<section class="card">
+  <h2>Thông tin yêu cầu</h2>
+  <form id="fetchForm" class="form-grid">
+    <label> Password (Số điện thoại đăng ký)
+      <input name="password" placeholder="VD: 84901234567" required />
+      <small>Gợi ý: nhập số điện thoại đã đăng ký</small>
+    </label>
+
+    <label> Email
+      <input name="email" placeholder="email@example.com" required />
+    </label>
+
+    <div class="actions">
+      <button type="button" class="btn-primary" id="btnLoginCode">Lấy mã đăng nhập</button>
+      <button type="button" class="btn-secondary" id="btnVerifyLink">Lấy: Mã xác minh hộ gia đình</button>
+    </div>
+  </form>
+
+  <div id="result" class="result-box"></div>
+</section>
+
+{% endblock %}

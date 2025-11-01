@@ -1,0 +1,172 @@
+/* =========================
+   Tokens & Base
+========================= */
+:root{
+  --bg:#0a0f1e;
+  --bg-2:#0c142b;
+  --card:#0f1a33;
+  --card-2:#0d162a;
+  --border:#1e2a49;
+  --text:#eaf0ff;
+  --muted:#98a8c9;
+
+  --primary:#5b8cff;
+  --primary-2:#3c6fff;
+  --success:#1ec49e;
+  --warn:#ffcc66;
+  --danger:#ff6b6b;
+
+  --radius:16px;
+  --shadow: 0 10px 35px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.03);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  color:var(--text);
+  background:
+    radial-gradient(900px 600px at 20% -10%, #16224a 0%, transparent 60%),
+    radial-gradient(800px 600px at 110% 10%, #101c3b 0%, transparent 60%),
+    var(--bg);
+  font: 15px/1.55 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+}
+
+/* =========================
+   Container & Headings
+========================= */
+.container{ max-width: 1180px; margin: 28px auto; padding: 0 18px; }
+
+h1{
+  margin: 6px 0 12px;
+  font-size: clamp(30px, 4vw, 46px);
+  letter-spacing:.3px;
+}
+.subtle{ color:var(--muted); margin: 0 0 22px; }
+
+/* =========================
+   Card
+========================= */
+.card{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.03), transparent),
+    linear-gradient(180deg, var(--card), var(--card-2));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+.card h2{
+  margin:0 0 16px;
+  font-size: 20px;
+  color:#cfe0ff;
+}
+
+/* =========================
+   Form Grid
+========================= */
+.form-grid{
+  display:grid;
+  gap:16px;
+  grid-template-columns: 1fr;
+}
+label{ display:block; }
+label > small{ display:block; margin-top:6px; color:var(--muted); }
+
+input{
+  width:100%;
+  margin-top:8px;
+  padding:12px 14px;
+  background:#0b1326;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:12px;
+  outline:none;
+  transition: border .15s, box-shadow .15s, background .15s, transform .02s;
+}
+input::placeholder{ color:#7e8fb2; }
+input:focus{
+  background:#0b1531;
+  border-color: color-mix(in oklab, var(--primary) 70%, white 0%);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+/* =========================
+   Buttons
+========================= */
+.actions{ display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; }
+
+.btn-primary, .btn-secondary{
+  appearance:none;
+  border:0;
+  padding:12px 18px;
+  border-radius:12px;
+  font-weight:700;
+  cursor:pointer;
+  transition: transform .05s ease, filter .2s ease, box-shadow .2s ease;
+  user-select:none;
+}
+
+.btn-primary{
+  color:#fff;
+  background: linear-gradient(180deg, var(--primary), var(--primary-2));
+  box-shadow: 0 10px 18px rgba(91,140,255,.25);
+}
+.btn-primary:hover{ filter:brightness(1.06); }
+.btn-primary:active{ transform: translateY(1px); }
+
+.btn-secondary{
+  color:#dfe8ff;
+  background:#0f213f;
+  border:1px solid var(--border);
+}
+.btn-secondary:hover{ background:#112750; border-color:#2a3a62; }
+.btn-secondary:active{ transform: translateY(1px); }
+
+/* =========================
+   Result Box / Alerts
+========================= */
+.result-box{ margin-top:18px; }
+
+.alert{
+  position:relative;
+  border-radius:14px;
+  padding:14px 16px;
+  border:1px solid var(--border);
+  background:#0f1d3c;
+  box-shadow: var(--shadow);
+  word-break: break-word;
+}
+.alert b{ font-weight:800; }
+.alert.success{ border-color: color-mix(in oklab, var(--success) 55%, var(--border)); background:#0c2420; }
+.alert.info   { border-color:#3553a3; background:#0e1b3a; }
+.alert.warn   { border-color:#7a6400; background:#2a2300; }
+.alert.danger { border-color:#7a1d1d; background:#2a1014; }
+.alert .meta  { opacity:.8; }
+
+.alert a{
+  color:#7fc3ff;
+  text-decoration: underline;
+  font-weight:700;
+  word-break: break-all;
+}
+.alert a:hover{ color:#a8d6ff; }
+
+/* =========================
+   Field helper line-up
+========================= */
+label small::before{
+  content:"";
+  display:inline-block;
+  width:6px; height:6px;
+  border-radius:99px; background:#3a64ff;
+  margin-right:8px; translate: 0 -1px;
+}
+
+/* =========================
+   Responsive
+========================= */
+@media (min-width: 860px){
+  .form-grid{ grid-template-columns: 1fr 1fr; }
+  .actions{ grid-column: 1 / -1; }
+}

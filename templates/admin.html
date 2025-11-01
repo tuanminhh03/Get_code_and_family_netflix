@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Quản trị</h1>
+
+{% if not session.is_admin %}
+  <form method="post" class="card" style="max-width:560px">
+    <label>Mật khẩu admin
+      <input name="password" type="password" placeholder="Nhập mật khẩu" required>
+    </label>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn-primary" type="submit">Đăng nhập</button>
+    </div>
+    {% if error %}<div class="result-box"><div class="alert danger">{{ error }}</div></div>{% endif %}
+  </form>
+{% else %}
+  <section class="card">
+    <h2>Emails</h2>
+    <ul id="emailList">
+      {% for e in emails %}
+        <li data-id="{{ e.id }}">{{ e.address }} <button class="btn-secondary" onclick="delEmail({{e.id}})">Xóa</button></li>
+      {% endfor %}
+    </ul>
+    <div class="actions">
+      <input id="newEmail" placeholder="email@example.com" style="max-width:320px">
+      <button class="btn-primary" onclick="addEmail()">Thêm</button>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Số điện thoại</h2>
+    <ul id="phoneList">
+      {% for p in phones %}
+        <li data-id="{{ p.id }}">{{ p.number }} {% if p.expiry %}- hết hạn: {{ p.expiry.strftime('%Y-%m-%d') }}{% endif %}
+          <button class="btn-secondary" onclick="delPhone({{p.id}})">Xóa</button>
+        </li>
+      {% endfor %}
+    </ul>
+    <div class="actions">
+      <input id="newPhone" placeholder="8490..." style="max-width:220px">
+      <input id="expiry" type="date" style="max-width:180px">
+      <button class="btn-primary" onclick="addPhone()">Thêm</button>
+    </div>
+  </section>
+
+  <script>
+    async function addEmail(){
+      const addr = document.getElementById('newEmail').value.trim();
+      if(!addr) return;
+      const fd = new FormData(); fd.append('address', addr);
+      await fetch('/admin/add_email', {method:'POST', body: fd}); location.reload();
+    }
+    async function delEmail(id){
+      const fd = new FormData(); fd.append('id', id);
+      await fetch('/admin/delete_email', {method:'POST', body: fd}); location.reload();
+    }
+    async function addPhone(){
+      const number = document.getElementById('newPhone').value.trim();
+      const expiry = document.getElementById('expiry').value;
+      const fd = new FormData(); fd.append('number', number); fd.append('expiry', expiry);
+      await fetch('/admin/add_phone', {method:'POST', body: fd}); location.reload();
+    }
+    async function delPhone(id){
+      const fd = new FormData(); fd.append('id', id);
+      await fetch('/admin/delete_phone', {method:'POST', body: fd}); location.reload();
+    }
+  </script>
+{% endif %}
+{% endblock %}
