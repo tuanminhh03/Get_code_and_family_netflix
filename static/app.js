@@ -48,9 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function showSuccessBlock({ code, link, time, kind }) {
     const showCode = kind !== 'verify_link' && code;
     const showLink = kind !== 'login_code' && link;
-    const timeHtml = time ? `<div class="small muted">Thời gian: ${time}</div>` : '';
-    const codeHtml = showCode ? `<div class="result-line"><strong>Mã:</strong> <span class="mono">${code}</span></div>` : '';
-    const linkHtml = showLink ? `<div class="result-line"><strong>Link:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
+    const timeHtml = time ? `<div class="small muted">🕒 Thời gian nhận: ${time}</div>` : '';
+    const codeLabel = kind === 'login_code' ? 'Mã đăng nhập' : 'Mã';
+    const linkLabel = kind === 'verify_link' ? 'Link xác minh hộ gia đình' : 'Link';
+    const codeHtml = showCode ? `<div class="result-line"><strong>${codeLabel}:</strong> <span class="mono">${code}</span></div>` : '';
+    const linkHtml = showLink ? `<div class="result-line"><strong>${linkLabel}:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
     resEl.innerHTML = `<div class="alert success">
         <div class="success-title">✅ Thành công</div>
         ${codeHtml}
@@ -108,10 +110,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Prefer explicit fields from backend
-      // possible keys: verify_link, code, content, received_at_raw, timestamp
+      // possible keys: verify_link, code, content, received_at_raw, received_at, timestamp
       const verifyLink = data.verify_link || data.link || extractFirstUrl(data.content) || extractFirstUrl(data.code) || null;
-      const code = (data.code && String(data.code).trim()) || (data.content && (data.content.match(/\b(\d{3,6})\b/) || [])[1]) || null;
-      const timeRaw = data.received_at_raw || data.timestamp || data.time || null;
+      const code = (data.code && String(data.code).trim())
+        || (data.content && (data.content.match(/\b(\d{3,6})\b/) || [])[1])
+        || null;
+      const timeRaw = data.received_at_raw || data.received_at || data.timestamp || data.time || null;
       const time = timeRaw ? formatTimestamp(timeRaw) : formatTimestamp(null);
 
       // If kind is verify_link but no explicit link found, try parse from message
@@ -129,8 +133,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (kind === 'login_code') {
         displayLink = null;
+
+        if (!displayCode) {
+          return showWarn('Chưa có mã đăng nhập, vui lòng bấm lại.');
+        }
       } else if (kind === 'verify_link') {
         displayCode = null;
+
+        if (!displayLink) {
+          return showWarn('Chưa có mã hộ gia đình, hãy bấm lại.');
+        }
+      }
+
+      if (!displayCode && !displayLink) {
+        const fallbackMsg = kind === 'login_code'
+          ? 'Chưa có mã đăng nhập, vui lòng bấm lại.'
+          : 'Chưa có mã hộ gia đình, hãy bấm lại.';
+        return showWarn(fallbackMsg);
       }
 
       showSuccessBlock({ code: displayCode, link: displayLink, time, kind });
