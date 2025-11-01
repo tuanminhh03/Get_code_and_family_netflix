@@ -1,6 +1,17 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import (
+    Flask,
+    render_template,
+    request,
+    jsonify,
+    redirect,
+    url_for,
+    session,
+    flash,
+)
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone
+from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
 import config
 import re
@@ -12,6 +23,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = config.SECRET_KEY
 
 db = SQLAlchemy(app)
+
+
+def ensure_database():
+    db.create_all()
 
 
 def _parse_timestamp_candidates(ts_raw: str):
@@ -26,12 +41,64 @@ def _parse_timestamp_candidates(ts_raw: str):
     return ts_raw, ""
 
 # === DATABASE MODEL ===
-class Phone(db.Model):
+class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
     phone = db.Column(db.String(50))
-    email = db.Column(db.String(120))
-    expiry = db.Column(db.String(50))
+    expiry_date = db.Column(db.Date)
+    notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    @property
+    def expiry_display(self):
+        if not self.expiry_date:
+            return "Không thiết lập"
+        return self.expiry_date.strftime("%d/%m/%Y")
+
+
+def _parse_date(value: str):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _evaluate_status(expiry_date: date, today: date | None = None):
+    today = today or date.today()
+    if not expiry_date:
+        return "active"
+    delta = (expiry_date - today).days
+    if delta < 0:
+        return "expired"
+    if delta <= 3:
+        return "expiring"
+    return "active"
+
+
+def _status_meta(status: str):
+    mapping = {
+        "active": {"label": "Còn hạn", "badge": "status-pill-active", "row": "status-row-active"},
+        "expiring": {"label": "Sắp hết hạn", "badge": "status-pill-expiring", "row": "status-row-expiring"},
+        "expired": {"label": "Đã hết hạn", "badge": "status-pill-expired", "row": "status-row-expired"},
+    }
+    return mapping.get(status, mapping["active"])
+
+
+def _safe_next(target: str | None):
+    if not target:
+        return url_for("admin")
+    if not target.startswith("/"):
+        return url_for("admin")
+    return target
+
+
+def _normalize_email(value: str):
+    return (value or "").strip().lower()
 
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
@@ -50,17 +117,212 @@ def index():
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
-    if request.method == 'POST':
-        phone = request.form.get('phone')
-        email = request.form.get('email')
-        expiry = request.form.get('expiry')
-        if phone and email:
-            db.session.add(Phone(phone=phone, email=email, expiry=expiry))
-            db.session.commit()
+    error = None
+    if not session.get('is_admin'):
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            if password == config.ADMIN_PASSWORD:
+                session['is_admin'] = True
+                return redirect(url_for('admin'))
+            error = "Sai mật khẩu, vui lòng thử lại."
+        return render_template('admin.html', error=error)
+
+    ensure_database()
+
+    today = date.today()
+
+    search = (request.args.get('q') or '').strip()
+    status_filter = request.args.get('status', 'all')
+
+    query = Customer.query
+    if search:
+        like_term = f"%{search.lower()}%"
+        query = query.filter(
+            or_(
+                func.lower(Customer.email).like(like_term),
+                func.lower(Customer.phone).like(like_term),
+                func.lower(Customer.notes).like(like_term),
+            )
+        )
+
+    customers = query.order_by(Customer.expiry_date.is_(None), Customer.expiry_date, Customer.email).all()
+
+    total_customers = 0
+    counts = {"active": 0, "expiring": 0, "expired": 0}
+    customers_view = []
+
+    for customer in customers:
+        status = _evaluate_status(customer.expiry_date, today)
+        counts[status] += 1
+        total_customers += 1
+
+        if status_filter != 'all' and status != status_filter:
+            continue
+
+        meta = _status_meta(status)
+        days_remaining = None
+        if customer.expiry_date:
+            days_remaining = (customer.expiry_date - today).days
+
+        customers_view.append(
+            {
+                "id": customer.id,
+                "email": customer.email,
+                "phone": customer.phone or "",
+                "expiry_display": customer.expiry_display,
+                "expiry_value": customer.expiry_date.strftime("%Y-%m-%d") if customer.expiry_date else "",
+                "status": status,
+                "status_label": meta["label"],
+                "status_badge": meta["badge"],
+                "row_class": meta["row"],
+                "notes": customer.notes or "",
+                "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
+                "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
+                "days_remaining": days_remaining,
+            }
+        )
+
+    active_customers = counts['active']
+    expiring_customers = counts['expiring']
+    expired_customers = counts['expired']
+
+    recent_threshold = datetime.utcnow() - timedelta(days=30)
+    recent_updates = Customer.query.filter(Customer.updated_at >= recent_threshold).count()
+    renewal_rate = 0
+    if total_customers:
+        renewal_rate = round((recent_updates / total_customers) * 100, 1)
+
+    stats = {
+        "total": total_customers,
+        "active": active_customers,
+        "expiring": expiring_customers,
+        "expired": expired_customers,
+        "renewal_rate": renewal_rate,
+    }
+
+    next_url = request.full_path.rstrip('?')
+
+    return render_template(
+        'admin.html',
+        customers=customers_view,
+        stats=stats,
+        search=search,
+        status_filter=status_filter,
+        next_url=next_url,
+    )
+
+
+@app.route('/admin/manage', methods=['POST'])
+def admin_manage():
+    if not session.get('is_admin'):
+        flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
         return redirect(url_for('admin'))
 
-    phones = Phone.query.order_by(Phone.id.desc()).all()
-    return render_template('admin_dashboard.html', phones=phones)
+    ensure_database()
+
+    action = request.form.get('action')
+    next_url = _safe_next(request.form.get('next'))
+
+    if action == 'create':
+        email_raw = request.form.get('email')
+        email = _normalize_email(email_raw)
+        phone = (request.form.get('phone') or '').strip()
+        expiry = _parse_date(request.form.get('expiry'))
+        notes = (request.form.get('notes') or '').strip()
+
+        if not email:
+            flash('Email không được để trống.', 'danger')
+            return redirect(next_url)
+
+        email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+        if not re.match(email_pattern, email):
+            flash('Email không hợp lệ.', 'danger')
+            return redirect(next_url)
+
+        exists = Customer.query.filter(func.lower(Customer.email) == email).first()
+        if exists:
+            flash('Email đã tồn tại trong hệ thống.', 'danger')
+            return redirect(next_url)
+
+        customer = Customer(email=email, phone=phone, expiry_date=expiry, notes=notes)
+        db.session.add(customer)
+        db.session.commit()
+        flash('Thêm khách hàng thành công.', 'success')
+        return redirect(next_url)
+
+    if action == 'update':
+        try:
+            customer_id = int(request.form.get('customer_id'))
+        except (TypeError, ValueError):
+            flash('Không tìm thấy khách hàng cần cập nhật.', 'danger')
+            return redirect(next_url)
+
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            flash('Khách hàng không tồn tại.', 'danger')
+            return redirect(next_url)
+
+        email_raw = request.form.get('email')
+        email = _normalize_email(email_raw)
+        phone = (request.form.get('phone') or '').strip()
+        expiry = _parse_date(request.form.get('expiry'))
+        notes = (request.form.get('notes') or '').strip()
+
+        if not email:
+            flash('Email không được để trống.', 'danger')
+            return redirect(next_url)
+
+        email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+        if not re.match(email_pattern, email):
+            flash('Email không hợp lệ.', 'danger')
+            return redirect(next_url)
+
+        duplicate = (
+            Customer.query.filter(func.lower(Customer.email) == email, Customer.id != customer.id)
+            .first()
+        )
+        if duplicate:
+            flash('Email đã được sử dụng cho khách hàng khác.', 'danger')
+            return redirect(next_url)
+
+        customer.email = email
+        customer.phone = phone
+        customer.expiry_date = expiry
+        customer.notes = notes
+        try:
+            db.session.commit()
+            flash('Cập nhật khách hàng thành công.', 'success')
+        except IntegrityError:
+            db.session.rollback()
+            flash('Không thể cập nhật khách hàng, vui lòng thử lại.', 'danger')
+        return redirect(next_url)
+
+    if action == 'delete':
+        try:
+            customer_id = int(request.form.get('customer_id'))
+        except (TypeError, ValueError):
+            flash('Không xác định được khách hàng cần xóa.', 'danger')
+            return redirect(next_url)
+
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            flash('Khách hàng không tồn tại.', 'danger')
+            return redirect(next_url)
+
+        db.session.delete(customer)
+        db.session.commit()
+        flash('Đã xóa khách hàng.', 'success')
+        return redirect(next_url)
+
+    flash('Hành động không hợp lệ.', 'danger')
+    return redirect(next_url)
+
+
+@app.route('/admin/logout', methods=['POST'])
+def admin_logout():
+    session.pop('is_admin', None)
+    flash('Đã đăng xuất khỏi phiên quản trị.', 'info')
+    return redirect(url_for('admin'))
 
 
 # === API ===
@@ -75,6 +337,16 @@ def api_fetch():
             return jsonify({"success": False, "message": "Thiếu email"}), 400
         if kind not in ("login_code", "verify_link"):
             return jsonify({"success": False, "message": f"kind không hợp lệ: {kind}"}), 400
+
+        ensure_database()
+
+        customer = Customer.query.filter(func.lower(Customer.email) == email.lower()).first()
+        if not customer:
+            return jsonify({"success": False, "message": "Email không hợp lệ hoặc chưa được cấp quyền, vui lòng liên hệ admin."}), 403
+
+        status = _evaluate_status(customer.expiry_date)
+        if status == 'expired':
+            return jsonify({"success": False, "message": "Gói Netflix của bạn đã hết hạn, vui lòng liên hệ admin để được gia hạn."}), 403
 
         worker = ensure_worker()
         print(f"[API] yêu cầu: kind={kind} email={email}")
