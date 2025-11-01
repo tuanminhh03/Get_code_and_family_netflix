@@ -1,68 +1,176 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>Quản trị</h1>
+<h1>Trang quản trị</h1>
+<p class="subtle">Giám sát khách hàng, hạn sử dụng và quyền truy cập hệ thống.</p>
 
-{% if not session.is_admin %}
-  <form method="post" class="card" style="max-width:560px">
-    <label>Mật khẩu admin
-      <input name="password" type="password" placeholder="Nhập mật khẩu" required>
-    </label>
-    <div class="actions" style="margin-top:10px">
-      <button class="btn-primary" type="submit">Đăng nhập</button>
-    </div>
-    {% if error %}<div class="result-box"><div class="alert danger">{{ error }}</div></div>{% endif %}
-  </form>
+{% if not session.get('is_admin') %}
+  <section class="card" style="max-width:480px; margin-top:24px;">
+    <h2>Đăng nhập Admin</h2>
+    <form method="post" class="form-grid">
+      <label>Mật khẩu quản trị
+        <input type="password" name="password" placeholder="Nhập mật khẩu" required>
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn-primary">Đăng nhập</button>
+      </div>
+      {% if error %}
+        <div class="result-box"><div class="alert danger">{{ error }}</div></div>
+      {% endif %}
+    </form>
+  </section>
 {% else %}
-  <section class="card">
-    <h2>Emails</h2>
-    <ul id="emailList">
-      {% for e in emails %}
-        <li data-id="{{ e.id }}">{{ e.address }} <button class="btn-secondary" onclick="delEmail({{e.id}})">Xóa</button></li>
-      {% endfor %}
-    </ul>
-    <div class="actions">
-      <input id="newEmail" placeholder="email@example.com" style="max-width:320px">
-      <button class="btn-primary" onclick="addEmail()">Thêm</button>
+  <section class="dashboard-grid">
+    <div class="mini-card">
+      <div class="mini-label">Tổng khách</div>
+      <div class="mini-value">{{ stats.total }}</div>
+    </div>
+    <div class="mini-card success">
+      <div class="mini-label">Còn hạn</div>
+      <div class="mini-value">{{ stats.active }}</div>
+    </div>
+    <div class="mini-card warn">
+      <div class="mini-label">Sắp hết hạn (≤ 3 ngày)</div>
+      <div class="mini-value">{{ stats.expiring }}</div>
+    </div>
+    <div class="mini-card danger">
+      <div class="mini-label">Đã hết hạn</div>
+      <div class="mini-value">{{ stats.expired }}</div>
+    </div>
+    <div class="mini-card info full">
+      <div class="mini-label">Tỷ lệ gia hạn 30 ngày gần đây</div>
+      <div class="mini-value">{{ stats.renewal_rate }}%</div>
     </div>
   </section>
 
-  <section class="card" style="margin-top:16px">
-    <h2>Số điện thoại</h2>
-    <ul id="phoneList">
-      {% for p in phones %}
-        <li data-id="{{ p.id }}">{{ p.number }} {% if p.expiry %}- hết hạn: {{ p.expiry.strftime('%Y-%m-%d') }}{% endif %}
-          <button class="btn-secondary" onclick="delPhone({{p.id}})">Xóa</button>
-        </li>
-      {% endfor %}
-    </ul>
-    <div class="actions">
-      <input id="newPhone" placeholder="8490..." style="max-width:220px">
-      <input id="expiry" type="date" style="max-width:180px">
-      <button class="btn-primary" onclick="addPhone()">Thêm</button>
+  <div class="card" style="margin-top:22px;">
+    <div class="card-header">
+      <h2>Thêm khách hàng</h2>
+      <form method="post" action="{{ url_for('admin_logout') }}">
+        <button type="submit" class="btn-secondary">Đăng xuất</button>
+      </form>
+    </div>
+    <form method="post" action="{{ url_for('admin_manage') }}" class="form-grid">
+      <input type="hidden" name="action" value="create">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label>Email khách hàng
+        <input name="email" type="email" placeholder="email@khach.com" required>
+        <small>Email được phép truy cập hệ thống</small>
+      </label>
+      <label>Số điện thoại / Mật khẩu
+        <input name="phone" placeholder="VD: 84901234567">
+        <small>Thường là số điện thoại đăng ký</small>
+      </label>
+      <label>Ngày hết hạn
+        <input name="expiry" type="date">
+        <small>Để trống nếu chưa xác định hạn</small>
+      </label>
+      <label>Ghi chú
+        <input name="notes" placeholder="Gói 90k, khách thân, ưu tiên...">
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn-primary">Lưu khách hàng</button>
+      </div>
+    </form>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="alert {{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <section class="card" style="margin-top:22px;">
+    <div class="card-header">
+      <h2>Danh sách khách hàng</h2>
+      <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Tìm email / SĐT / ghi chú" value="{{ search }}">
+        <select name="status">
+          <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Tất cả trạng thái</option>
+          <option value="active" {% if status_filter == 'active' %}selected{% endif %}>🟢 Còn hạn</option>
+          <option value="expiring" {% if status_filter == 'expiring' %}selected{% endif %}>🟡 Sắp hết hạn</option>
+          <option value="expired" {% if status_filter == 'expired' %}selected{% endif %}>🔴 Đã hết hạn</option>
+        </select>
+        <div class="actions">
+          <button type="submit" class="btn-primary">Lọc</button>
+          <a href="{{ url_for('admin') }}" class="btn-secondary">Xóa lọc</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Số điện thoại</th>
+            <th>Hạn sử dụng</th>
+            <th>Trạng thái</th>
+            <th>Ghi chú</th>
+            <th>Đăng ký</th>
+            <th>Cập nhật</th>
+            <th>Hành động</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if customers %}
+            {% for c in customers %}
+              <tr class="status-row {{ c.row_class }}">
+                <td class="mono">{{ c.email }}</td>
+                <td>{{ c.phone or '—' }}</td>
+                <td>{{ c.expiry_display }}</td>
+                <td><span class="status-pill {{ c.status_badge }}">{{ c.status_label }}</span>
+                  {% if c.days_remaining is not none %}
+                    <div class="pill-meta">{{ c.days_remaining }} ngày còn lại</div>
+                  {% endif %}
+                </td>
+                <td>{{ c.notes or '—' }}</td>
+                <td>{{ c.created_at }}</td>
+                <td>{{ c.updated_at }}</td>
+                <td class="actions-cell">
+                  <details>
+                    <summary>Chỉnh sửa</summary>
+                    <form method="post" action="{{ url_for('admin_manage') }}" class="edit-form">
+                      <input type="hidden" name="action" value="update">
+                      <input type="hidden" name="customer_id" value="{{ c.id }}">
+                      <input type="hidden" name="next" value="{{ next_url }}">
+                      <label>Email
+                        <input name="email" value="{{ c.email }}" required>
+                      </label>
+                      <label>Số điện thoại
+                        <input name="phone" value="{{ c.phone }}">
+                      </label>
+                      <label>Ngày hết hạn
+                        <input name="expiry" type="date" value="{{ c.expiry_value }}">
+                      </label>
+                      <label>Ghi chú
+                        <input name="notes" value="{{ c.notes }}">
+                      </label>
+                      <div class="actions">
+                        <button type="submit" class="btn-primary">Cập nhật</button>
+                      </div>
+                    </form>
+                    <form method="post" action="{{ url_for('admin_manage') }}" onsubmit="return confirm('Xóa khách hàng này?');">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="customer_id" value="{{ c.id }}">
+                      <input type="hidden" name="next" value="{{ next_url }}">
+                      <button type="submit" class="btn-secondary">Xóa</button>
+                    </form>
+                  </details>
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="8" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có khách hàng nào phù hợp.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
     </div>
   </section>
-
-  <script>
-    async function addEmail(){
-      const addr = document.getElementById('newEmail').value.trim();
-      if(!addr) return;
-      const fd = new FormData(); fd.append('address', addr);
-      await fetch('/admin/add_email', {method:'POST', body: fd}); location.reload();
-    }
-    async function delEmail(id){
-      const fd = new FormData(); fd.append('id', id);
-      await fetch('/admin/delete_email', {method:'POST', body: fd}); location.reload();
-    }
-    async function addPhone(){
-      const number = document.getElementById('newPhone').value.trim();
-      const expiry = document.getElementById('expiry').value;
-      const fd = new FormData(); fd.append('number', number); fd.append('expiry', expiry);
-      await fetch('/admin/add_phone', {method:'POST', body: fd}); location.reload();
-    }
-    async function delPhone(id){
-      const fd = new FormData(); fd.append('id', id);
-      await fetch('/admin/delete_phone', {method:'POST', body: fd}); location.reload();
-    }
-  </script>
 {% endif %}
 {% endblock %}
