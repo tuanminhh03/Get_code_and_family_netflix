@@ -45,51 +45,41 @@ document.addEventListener('DOMContentLoaded', () => {
     resEl.innerHTML = `<div class="alert warn">⚠️ ${msg}</div>`;
   }
 
-  function showSuccessBlock({ code, link, time, raw }) {
+  function showSuccessBlock({ code, link, time, kind }) {
+    const showCode = kind !== 'verify_link' && code;
+    const showLink = kind !== 'login_code' && link;
     const timeHtml = time ? `<div class="small muted">Thời gian: ${time}</div>` : '';
-    const codeHtml = code ? `<div class="result-line"><strong>Mã:</strong> <span class="mono">${code}</span></div>` : '';
-    const linkHtml = link ? `<div class="result-line"><strong>Link:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
-    // "Xem đầy đủ" to show raw if needed
-    const rawToggle = raw ? `<details class="raw-box"><summary>Xem nội dung đầy đủ</summary><pre>${escapeHtml(raw)}</pre></details>` : '';
+    const codeHtml = showCode ? `<div class="result-line"><strong>Mã:</strong> <span class="mono">${code}</span></div>` : '';
+    const linkHtml = showLink ? `<div class="result-line"><strong>Link:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
     resEl.innerHTML = `<div class="alert success">
         <div class="success-title">✅ Thành công</div>
         ${codeHtml}
         ${linkHtml}
         ${timeHtml}
-        ${rawToggle}
         <div class="actions-row">
-          ${code ? `<button id="copyCodeBtn" class="btn small">Sao chép mã</button>` : ''}
-          ${link ? `<button id="openLinkBtn" class="btn small">Mở link</button>` : ''}
+          ${showCode ? `<button id="copyCodeBtn" class="btn small">Sao chép mã</button>` : ''}
+          ${showLink ? `<button id="openLinkBtn" class="btn small">Mở link</button>` : ''}
         </div>
       </div>`;
 
     // wire buttons
     const copyBtn = document.getElementById('copyCodeBtn');
-    if (copyBtn && code) {
+    if (copyBtn && showCode) {
       copyBtn.addEventListener('click', () => {
         if (navigator.clipboard) navigator.clipboard.writeText(code).catch(()=>{});
       });
     }
     const openBtn = document.getElementById('openLinkBtn');
-    if (openBtn && link) {
+    if (openBtn && showLink) {
       openBtn.addEventListener('click', () => {
         window.open(link, '_blank', 'noopener');
       });
     }
     // auto-copy best candidate (link if exists, otherwise code)
-    const toCopy = link || code || '';
+    const toCopy = (showLink ? link : '') || (showCode ? code : '') || '';
     if (navigator.clipboard && toCopy) {
       navigator.clipboard.writeText(toCopy).catch(()=>{});
     }
-  }
-
-  function escapeHtml(s) {
-    return (s || '').toString()
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 
   async function callAPI(kind) {
@@ -133,8 +123,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // Show cleaned result (only code or link + time)
-      showSuccessBlock({ code, link: verifyLink, time, raw: data.content || JSON.stringify(data, null, 2) });
+      // Show cleaned result (only code or link + time as requested)
+      let displayCode = code;
+      let displayLink = verifyLink;
+
+      if (kind === 'login_code') {
+        displayLink = null;
+      } else if (kind === 'verify_link') {
+        displayCode = null;
+      }
+
+      showSuccessBlock({ code: displayCode, link: displayLink, time, kind });
     } catch (err) {
       showError(`Lỗi khi gọi API: ${err}`);
     }
