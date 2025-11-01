@@ -131,6 +131,14 @@ document.addEventListener('DOMContentLoaded', () => {
         displayLink = null;
       } else if (kind === 'verify_link') {
         displayCode = null;
+
+        if (!displayLink) {
+          return showWarn('Chưa có mã hộ gia đình, hãy bấm lại.');
+        }
+      }
+
+      if (!displayCode && !displayLink) {
+        return showWarn('Chưa có mã hộ gia đình, hãy bấm lại.');
       }
 
       showSuccessBlock({ code: displayCode, link: displayLink, time, kind });
