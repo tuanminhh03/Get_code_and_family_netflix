@@ -52,12 +52,8 @@
     <form method="post" action="{{ url_for('admin_manage') }}" class="form-grid">
       <input type="hidden" name="action" value="create">
       <input type="hidden" name="next" value="{{ next_url }}">
-      <label>Email khách hàng
-        <input name="email" type="email" placeholder="email@khach.com" required>
-        <small>Email được phép truy cập hệ thống</small>
-      </label>
       <label>Số điện thoại / Mật khẩu
-        <input name="phone" placeholder="VD: 84901234567">
+        <input name="phone" placeholder="VD: 84901234567" required>
         <small>Thường là số điện thoại đăng ký</small>
       </label>
       <label>Ngày hết hạn
@@ -67,8 +63,25 @@
       <label>Ghi chú
         <input name="notes" placeholder="Gói 90k, khách thân, ưu tiên...">
       </label>
+      <p class="subtle" style="grid-column:1 / -1; margin:0;">Email có thể thêm qua chức năng Import phía dưới.</p>
       <div class="actions">
         <button type="submit" class="btn-primary">Lưu khách hàng</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:22px;">
+    <div class="card-header">
+      <h2>Import danh sách email</h2>
+    </div>
+    <form method="post" action="{{ url_for('admin_import') }}" enctype="multipart/form-data" class="form-grid">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label>Tệp .txt chứa email
+        <input type="file" name="email_file" accept=".txt" required>
+        <small>Mỗi dòng là một email, định dạng UTF-8</small>
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn-secondary">Import email</button>
       </div>
     </form>
   </div>
@@ -119,7 +132,7 @@
           {% if customers %}
             {% for c in customers %}
               <tr class="status-row {{ c.row_class }}">
-                <td class="mono">{{ c.email }}</td>
+                <td class="mono">{{ c.email or '—' }}</td>
                 <td>{{ c.phone or '—' }}</td>
                 <td>{{ c.expiry_display }}</td>
                 <td><span class="status-pill {{ c.status_badge }}">{{ c.status_label }}</span>
@@ -137,8 +150,8 @@
                       <input type="hidden" name="action" value="update">
                       <input type="hidden" name="customer_id" value="{{ c.id }}">
                       <input type="hidden" name="next" value="{{ next_url }}">
-                      <label>Email
-                        <input name="email" value="{{ c.email }}" required>
+                      <label>Email (có thể bỏ trống)
+                        <input name="email" value="{{ c.email or '' }}" placeholder="email@khach.com">
                       </label>
                       <label>Số điện thoại
                         <input name="phone" value="{{ c.phone }}">
