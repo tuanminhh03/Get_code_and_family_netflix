@@ -179,6 +179,21 @@ def admin():
     search = (request.args.get('q') or '').strip()
     status_filter = request.args.get('status', 'all')
 
+    # Pre-compute how many emails are associated with each phone number so that the
+    # UI can highlight potential abuse cases (many emails mapped to one phone).
+    phone_email_counts: dict[str, int] = {}
+    email_usage_rows = (
+        db.session.query(Customer.phone, func.count(Customer.id))
+        .filter(Customer.email.isnot(None), Customer.email != "")
+        .group_by(Customer.phone)
+        .all()
+    )
+    for phone_value, count in email_usage_rows:
+        normalized_phone = (phone_value or "").strip()
+        if not normalized_phone:
+            continue
+        phone_email_counts[normalized_phone] = count
+
     query = Customer.query
     if search:
         like_term = f"%{search.lower()}%"
@@ -209,6 +224,9 @@ def admin():
         if customer.expiry_date:
             days_remaining = (customer.expiry_date - today).days
 
+        normalized_phone = (customer.phone or "").strip()
+        email_usage_count = phone_email_counts.get(normalized_phone, 0)
+
         customers_view.append(
             {
                 "id": customer.id,
@@ -224,6 +242,8 @@ def admin():
                 "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
                 "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
                 "days_remaining": days_remaining,
+                "phone_email_count": email_usage_count,
+                "has_multiple_emails": email_usage_count > 1,
             }
         )
 

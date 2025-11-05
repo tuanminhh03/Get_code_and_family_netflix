@@ -120,6 +120,7 @@
           <tr>
             <th>Email</th>
             <th>Số điện thoại</th>
+            <th>Email/SĐT</th>
             <th>Hạn sử dụng</th>
             <th>Trạng thái</th>
             <th>Ghi chú</th>
@@ -132,8 +133,25 @@
           {% if customers %}
             {% for c in customers %}
               <tr class="status-row {{ c.row_class }}">
-                <td class="mono">{{ c.email or '—' }}</td>
-                <td>{{ c.phone or '—' }}</td>
+                <td class="mono email-cell">
+                  {% if c.email %}
+                    <a href="mailto:{{ c.email }}">{{ c.email }}</a>
+                  {% else %}
+                    <span class="placeholder">—</span>
+                  {% endif %}
+                </td>
+                <td class="mono phone-cell">{{ c.phone or '—' }}</td>
+                <td>
+                  {% if c.phone %}
+                    {% if c.phone_email_count %}
+                      <span class="usage-chip {% if c.has_multiple_emails %}usage-chip-warning{% endif %}">{{ c.phone_email_count }} email</span>
+                    {% else %}
+                      <span class="usage-chip usage-chip-muted">Chưa có email</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="placeholder">—</span>
+                  {% endif %}
+                </td>
                 <td>{{ c.expiry_display }}</td>
                 <td><span class="status-pill {{ c.status_badge }}">{{ c.status_label }}</span>
                   {% if c.days_remaining is not none %}
@@ -178,7 +196,7 @@
             {% endfor %}
           {% else %}
             <tr>
-              <td colspan="8" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có khách hàng nào phù hợp.</td>
+              <td colspan="9" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có khách hàng nào phù hợp.</td>
             </tr>
           {% endif %}
         </tbody>

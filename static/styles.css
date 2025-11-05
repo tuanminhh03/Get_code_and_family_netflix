@@ -254,6 +254,42 @@ label small::before{
   border-bottom:none;
 }
 
+.email-cell a{
+  color:#d4e4ff;
+  text-decoration:none;
+  word-break:break-all;
+}
+.email-cell a:hover{
+  text-decoration:underline;
+}
+.phone-cell{
+  white-space:nowrap;
+}
+.usage-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:13px;
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.08);
+  color:#f4f7ff;
+}
+.usage-chip-muted{
+  color:var(--muted);
+  border-style:dashed;
+}
+.usage-chip-warning{
+  background:rgba(255,107,107,0.12);
+  border-color:rgba(255,107,107,0.35);
+  color:#ffb5b5;
+  font-weight:600;
+}
+.placeholder{
+  color:var(--muted);
+}
+
 .status-pill{
   display:inline-flex;
   align-items:center;
