@@ -102,6 +102,7 @@ def _normalize_email(value: str):
 
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
+
 def ensure_worker():
     global _worker
     if _worker is None:
@@ -330,8 +331,17 @@ def admin_logout():
 def api_fetch():
     try:
         data = request.form if request.form else request.json
-        email = (data or {}).get('email', '').strip()
-        kind  = (data or {}).get('kind', 'login_code')
+
+        # Support optional target_email; default to the same as requester
+        email_raw = (data or {}).get('email', '')
+        target_email_raw = (data or {}).get('target_email', '')
+        kind = (data or {}).get('kind', 'login_code')
+
+        email = _normalize_email(email_raw)
+        target_email = _normalize_email(target_email_raw) or email
+
+        # The email actually used by the worker to fetch. If target provided, use it; else requester
+        fetch_email = (target_email_raw or email_raw or '').strip()
 
         if not email:
             return jsonify({"success": False, "message": "Thiếu email"}), 400
@@ -340,17 +350,27 @@ def api_fetch():
 
         ensure_database()
 
-        customer = Customer.query.filter(func.lower(Customer.email) == email.lower()).first()
-        if not customer:
+        # Validate requester
+        requester = Customer.query.filter(func.lower(Customer.email) == email).first()
+        if not requester:
             return jsonify({"success": False, "message": "Email không hợp lệ hoặc chưa được cấp quyền, vui lòng liên hệ admin."}), 403
 
-        status = _evaluate_status(customer.expiry_date)
+        status = _evaluate_status(requester.expiry_date)
         if status == 'expired':
             return jsonify({"success": False, "message": "Gói Netflix của bạn đã hết hạn, vui lòng liên hệ admin để được gia hạn."}), 403
 
+        # Validate target (can be the same as requester)
+        target = Customer.query.filter(func.lower(Customer.email) == target_email).first()
+        if not target:
+            return jsonify({"success": False, "message": "Email đích không tồn tại trong hệ thống."}), 404
+
+        target_status = _evaluate_status(target.expiry_date)
+        if target_status == 'expired':
+            return jsonify({"success": False, "message": "Email đích đã hết hạn, vui lòng liên hệ admin."}), 403
+
         worker = ensure_worker()
-        print(f"[API] yêu cầu: kind={kind} email={email}")
-        result = worker.fetch(email=email, kind=kind)
+        print(f"[API] yêu cầu: kind={kind} email={fetch_email}")
+        result = worker.fetch(email=fetch_email, kind=kind)
         print(f"[API] trả về: {result}")
 
         # chuẩn bị thời gian dự phòng từ server (giờ địa phương của server)
@@ -405,6 +425,8 @@ def api_fetch():
             "timestamp": timestamp_raw,
             "server_time_raw": fallback_raw,
             "server_time_iso": fallback_iso,
+            "requester_email": requester.email,
+            "target_email": target.email,
         }
 
         return jsonify(response_payload)
