@@ -9,7 +9,7 @@ from flask import (
     flash,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
@@ -27,6 +27,50 @@ db = SQLAlchemy(app)
 
 def ensure_database():
     db.create_all()
+    _ensure_email_nullable()
+
+
+def _ensure_email_nullable():
+    try:
+        result = db.session.execute(text("PRAGMA table_info(customers)")).fetchall()
+    except Exception:
+        return
+
+    email_info = next((row for row in result if row[1] == "email"), None)
+    if not email_info:
+        return
+
+    # In SQLite, the `notnull` flag is stored at index 3
+    if email_info[3] == 0:
+        return
+
+    with db.engine.begin() as conn:
+        conn.execute(text("ALTER TABLE customers RENAME TO customers_old"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE customers (
+                    id INTEGER PRIMARY KEY,
+                    email VARCHAR(255),
+                    phone VARCHAR(50),
+                    expiry_date DATE,
+                    notes TEXT,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_customers_email ON customers (email)"))
+        conn.execute(
+            text(
+                """
+                INSERT INTO customers (id, email, phone, expiry_date, notes, created_at, updated_at)
+                SELECT id, email, phone, expiry_date, notes, created_at, updated_at FROM customers_old
+                """
+            )
+        )
+        conn.execute(text("DROP TABLE customers_old"))
 
 
 def _parse_timestamp_candidates(ts_raw: str):
@@ -43,7 +87,7 @@ def _parse_timestamp_candidates(ts_raw: str):
 # === DATABASE MODEL ===
 class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=True)
     phone = db.Column(db.String(50))
     expiry_date = db.Column(db.Date)
     notes = db.Column(db.Text)
@@ -168,7 +212,7 @@ def admin():
         customers_view.append(
             {
                 "id": customer.id,
-                "email": customer.email,
+                "email": customer.email or "",
                 "phone": customer.phone or "",
                 "expiry_display": customer.expiry_display,
                 "expiry_value": customer.expiry_date.strftime("%Y-%m-%d") if customer.expiry_date else "",
@@ -231,21 +275,22 @@ def admin_manage():
         expiry = _parse_date(request.form.get('expiry'))
         notes = (request.form.get('notes') or '').strip()
 
-        if not email:
-            flash('Email không được để trống.', 'danger')
+        if not phone:
+            flash('Số điện thoại không được để trống.', 'danger')
             return redirect(next_url)
 
         email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-        if not re.match(email_pattern, email):
-            flash('Email không hợp lệ.', 'danger')
-            return redirect(next_url)
+        if email:
+            if not re.match(email_pattern, email):
+                flash('Email không hợp lệ.', 'danger')
+                return redirect(next_url)
 
-        exists = Customer.query.filter(func.lower(Customer.email) == email).first()
-        if exists:
-            flash('Email đã tồn tại trong hệ thống.', 'danger')
-            return redirect(next_url)
+            exists = Customer.query.filter(func.lower(Customer.email) == email).first()
+            if exists:
+                flash('Email đã tồn tại trong hệ thống.', 'danger')
+                return redirect(next_url)
 
-        customer = Customer(email=email, phone=phone, expiry_date=expiry, notes=notes)
+        customer = Customer(email=email or None, phone=phone, expiry_date=expiry, notes=notes)
         db.session.add(customer)
         db.session.commit()
         flash('Thêm khách hàng thành công.', 'success')
@@ -269,24 +314,21 @@ def admin_manage():
         expiry = _parse_date(request.form.get('expiry'))
         notes = (request.form.get('notes') or '').strip()
 
-        if not email:
-            flash('Email không được để trống.', 'danger')
-            return redirect(next_url)
-
         email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-        if not re.match(email_pattern, email):
-            flash('Email không hợp lệ.', 'danger')
-            return redirect(next_url)
+        if email:
+            if not re.match(email_pattern, email):
+                flash('Email không hợp lệ.', 'danger')
+                return redirect(next_url)
 
-        duplicate = (
-            Customer.query.filter(func.lower(Customer.email) == email, Customer.id != customer.id)
-            .first()
-        )
-        if duplicate:
-            flash('Email đã được sử dụng cho khách hàng khác.', 'danger')
-            return redirect(next_url)
+            duplicate = (
+                Customer.query.filter(func.lower(Customer.email) == email, Customer.id != customer.id)
+                .first()
+            )
+            if duplicate:
+                flash('Email đã được sử dụng cho khách hàng khác.', 'danger')
+                return redirect(next_url)
 
-        customer.email = email
+        customer.email = email or None
         customer.phone = phone
         customer.expiry_date = expiry
         customer.notes = notes
@@ -316,6 +358,74 @@ def admin_manage():
         return redirect(next_url)
 
     flash('Hành động không hợp lệ.', 'danger')
+    return redirect(next_url)
+
+
+@app.route('/admin/import', methods=['POST'])
+def admin_import():
+    if not session.get('is_admin'):
+        flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
+        return redirect(url_for('admin'))
+
+    ensure_database()
+
+    next_url = _safe_next(request.form.get('next'))
+    file = request.files.get('email_file')
+
+    if not file or not file.filename:
+        flash('Vui lòng chọn tệp .txt để import.', 'danger')
+        return redirect(next_url)
+
+    try:
+        content = file.read().decode('utf-8')
+    except UnicodeDecodeError:
+        flash('Tệp phải sử dụng mã hóa UTF-8.', 'danger')
+        return redirect(next_url)
+
+    email_pattern = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    added = 0
+    skipped = 0
+    invalid = 0
+    seen = set()
+
+    for line in content.splitlines():
+        candidate = _normalize_email(line)
+        if not candidate or candidate in seen:
+            if candidate:
+                skipped += 1
+            continue
+
+        seen.add(candidate)
+
+        if not email_pattern.match(candidate):
+            invalid += 1
+            continue
+
+        exists = Customer.query.filter(func.lower(Customer.email) == candidate).first()
+        if exists:
+            skipped += 1
+            continue
+
+        customer = Customer(email=candidate)
+        db.session.add(customer)
+        added += 1
+
+    if added:
+        db.session.commit()
+    else:
+        db.session.rollback()
+
+    message_parts = []
+    if added:
+        message_parts.append(f'thêm {added} email mới')
+    if skipped:
+        message_parts.append(f'bỏ qua {skipped} email trùng')
+    if invalid:
+        message_parts.append(f'{invalid} dòng không hợp lệ')
+
+    summary = '; '.join(message_parts) if message_parts else 'Không có email hợp lệ để import.'
+    flash(f'Import hoàn tất: {summary}.', 'info' if added else 'warning')
+
     return redirect(next_url)
 
 
