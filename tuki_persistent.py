@@ -26,8 +26,33 @@ def _parse_code_time_text(raw_text: str):
         return "", "", ""
     t = raw_text.replace("\r", "")
     code, t_raw = "", ""
-    m1 = re.search(r"(?i)Nội dung:\s*([^\n\r]+)", t)
+    m1 = re.search(r"(?i)Nội dung\s*[:：]\s*([^\n\r]+)", t)
     if m1: code = m1.group(1).strip()
+    if not code:
+        for pattern in (
+            r"(?i)Mã\s*[:：]\s*([^\n\r]+)",
+            r"(?i)Code\s*[:：]\s*([^\n\r]+)",
+        ):
+            m_alt = re.search(pattern, t)
+            if m_alt:
+                code = m_alt.group(1).strip()
+                break
+    if code:
+        compact = re.sub(r"[^0-9]", "", code)
+        if 3 <= len(compact) <= 10:
+            code = compact
+    if not code:
+        near_nội_dung = re.search(r"(?i)Nội dung[^\n\r]*\n([^\n\r]+)", t)
+        if near_nội_dung:
+            candidate = re.sub(r"[^0-9]", "", near_nội_dung.group(1))
+            if 3 <= len(candidate) <= 10:
+                code = candidate
+    if not code:
+        seq = re.search(r"(?<!\d)(\d[\d\s-]{2,})(?!\d)", t)
+        if seq:
+            candidate = re.sub(r"[^0-9]", "", seq.group(1))
+            if 3 <= len(candidate) <= 10:
+                code = candidate
     m2 = re.search(r"(?i)Thời gian nhận:\s*([^\n\r]+)", t)
     if m2: t_raw = m2.group(1).strip()
 
