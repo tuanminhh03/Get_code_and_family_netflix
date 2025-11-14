@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnVerify  = document.getElementById('btnVerifyLink');
   const resEl      = document.getElementById('result');
   const form       = document.getElementById('fetchForm');
+  const isAdminPage = window.location.pathname.startsWith('/admin');
 
   if (!resEl) {
     console.warn('result element not found (#result)');
@@ -76,13 +77,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const showCode = kind !== 'verify_link' && code;
     const showLink = kind !== 'login_code' && link;
     const showContent = content && (!showCode || !showLink);
+    const allowDetails = !isAdminPage;
+    const linkVisible = allowDetails && showLink;
+    const contentVisible = allowDetails && showContent;
     const timeHtml = time ? `<div class="small muted">🕒 Thời gian nhận: ${time}</div>` : '';
     const codeLabel = kind === 'login_code' ? 'Mã đăng nhập' : 'Mã';
     const linkLabel = kind === 'verify_link' ? 'Link xác minh hộ gia đình' : 'Link';
     const codeHtml = showCode ? `<div class="result-line"><strong>${codeLabel}:</strong> <span class="mono">${code}</span></div>` : '';
-    const linkHtml = showLink ? `<div class="result-line"><strong>${linkLabel}:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
+    const linkHtml = linkVisible ? `<div class="result-line"><strong>${linkLabel}:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
     const safeContent = content ? escapeHtml(content) : '';
-    const contentHtml = showContent ? `<div class="result-line"><strong>Nội dung:</strong> <pre class="result-content">${safeContent}</pre></div>` : '';
+    const contentHtml = contentVisible ? `<div class="result-line"><strong>Nội dung:</strong> <pre class="result-content">${safeContent}</pre></div>` : '';
     resEl.innerHTML = `<div class="alert success">
         <div class="success-title">✅ Thành công</div>
         ${codeHtml}
@@ -91,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ${timeHtml}
         <div class="actions-row">
           ${showCode ? `<button id="copyCodeBtn" class="btn small">Sao chép mã</button>` : ''}
-          ${showLink ? `<button id="openLinkBtn" class="btn small">Mở link</button>` : ''}
+          ${linkVisible ? `<button id="openLinkBtn" class="btn small">Mở link</button>` : ''}
         </div>
       </div>`;
 
@@ -103,13 +107,13 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
     const openBtn = document.getElementById('openLinkBtn');
-    if (openBtn && showLink) {
+    if (openBtn && linkVisible) {
       openBtn.addEventListener('click', () => {
         window.open(link, '_blank', 'noopener');
       });
     }
     // auto-copy best candidate (link if exists, otherwise code)
-    const toCopy = (showLink ? link : '') || (showCode ? code : '') || '';
+    const toCopy = (linkVisible ? link : '') || (showCode ? code : '') || '';
     if (navigator.clipboard && toCopy) {
       navigator.clipboard.writeText(toCopy).catch(()=>{});
     }
