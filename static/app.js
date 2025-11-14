@@ -23,6 +23,25 @@ document.addEventListener('DOMContentLoaded', () => {
     return m ? m[0] : null;
   }
 
+  function extractNumericCode(text) {
+    if (!text) return null;
+    const asString = String(text);
+    const direct = asString.match(/\b(\d{3,10})\b/);
+    if (direct) return direct[1];
+    const compact = asString.replace(/[^0-9]/g, '');
+    if (compact.length >= 3 && compact.length <= 10) return compact;
+    return null;
+  }
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function resolveDisplayTime(data) {
     const raw = data?.received_at_raw || data?.timestamp_raw || data?.timestamp || null;
     const iso = data?.received_at || data?.timestamp_iso || null;
@@ -53,18 +72,22 @@ document.addEventListener('DOMContentLoaded', () => {
     resEl.innerHTML = `<div class="alert warn">⚠️ ${msg}</div>`;
   }
 
-  function showSuccessBlock({ code, link, time, kind }) {
+  function showSuccessBlock({ code, link, time, content, kind }) {
     const showCode = kind !== 'verify_link' && code;
     const showLink = kind !== 'login_code' && link;
+    const showContent = content && (!showCode || !showLink);
     const timeHtml = time ? `<div class="small muted">🕒 Thời gian nhận: ${time}</div>` : '';
     const codeLabel = kind === 'login_code' ? 'Mã đăng nhập' : 'Mã';
     const linkLabel = kind === 'verify_link' ? 'Link xác minh hộ gia đình' : 'Link';
     const codeHtml = showCode ? `<div class="result-line"><strong>${codeLabel}:</strong> <span class="mono">${code}</span></div>` : '';
     const linkHtml = showLink ? `<div class="result-line"><strong>${linkLabel}:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
+    const safeContent = content ? escapeHtml(content) : '';
+    const contentHtml = showContent ? `<div class="result-line"><strong>Nội dung:</strong> <pre class="result-content">${safeContent}</pre></div>` : '';
     resEl.innerHTML = `<div class="alert success">
         <div class="success-title">✅ Thành công</div>
         ${codeHtml}
         ${linkHtml}
+        ${contentHtml}
         ${timeHtml}
         <div class="actions-row">
           ${showCode ? `<button id="copyCodeBtn" class="btn small">Sao chép mã</button>` : ''}
@@ -119,10 +142,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Prefer explicit fields from backend
       // possible keys: verify_link, code, content, received_at_raw, received_at, timestamp
-      const verifyLink = data.verify_link || data.link || extractFirstUrl(data.content) || extractFirstUrl(data.code) || null;
-      const code = (data.code && String(data.code).trim())
-        || (data.content && (data.content.match(/\b(\d{3,6})\b/) || [])[1])
-        || null;
+      const rawContent = (data.content && String(data.content).trim()) || '';
+      const codeRaw = (data.code && String(data.code).trim()) || '';
+      const verifyLink = data.verify_link || data.link || extractFirstUrl(rawContent) || extractFirstUrl(codeRaw) || null;
+      let code = codeRaw || null;
+      if (!code) {
+        code = extractNumericCode(rawContent);
+      } else {
+        const normalized = extractNumericCode(codeRaw);
+        if (normalized) code = normalized;
+      }
       const time = resolveDisplayTime(data);
 
       // If kind is verify_link but no explicit link found, try parse from message
@@ -140,6 +169,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (kind === 'login_code') {
         displayLink = null;
+        if (!displayCode && rawContent) {
+          return showSuccessBlock({ code: '', link: '', time, content: rawContent, kind });
+        }
         if (!displayCode) {
           return showWarn('Chưa có mã đăng nhập, vui lòng bấm lại.');
         }
@@ -154,10 +186,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const fallbackMsg = kind === 'login_code'
           ? 'Chưa có mã đăng nhập, vui lòng bấm lại.'
           : 'Chưa có mã hộ gia đình, hãy bấm lại.';
+        if (rawContent) {
+          return showSuccessBlock({ code: '', link: '', time, content: rawContent, kind });
+        }
         return showWarn(fallbackMsg);
       }
 
-      showSuccessBlock({ code: displayCode, link: displayLink, time, kind });
+      showSuccessBlock({ code: displayCode, link: displayLink, time, content: rawContent, kind });
     } catch (err) {
       showError(`Lỗi khi gọi API: ${err}`);
     }
