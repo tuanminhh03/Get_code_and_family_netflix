@@ -152,6 +152,19 @@ input:focus{
 }
 .alert a:hover{ color:#a8d6ff; }
 
+.result-content{
+  margin:8px 0 0;
+  padding:12px;
+  border-radius:12px;
+  background:#0b142d;
+  border:1px solid var(--border);
+  font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', ui-monospace, monospace;
+  font-size:14px;
+  line-height:1.45;
+  white-space:pre-wrap;
+  color:var(--text);
+}
+
 /* =========================
    Field helper line-up
 ========================= */
