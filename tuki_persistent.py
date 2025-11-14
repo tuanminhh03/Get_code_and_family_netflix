@@ -15,7 +15,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 # USERNAME_TUKI = 'CTV0047'
 import config
 
-RESULT_WAIT_MAX = 15
+# Thời gian tối đa chờ phần tử kết quả xuất hiện
+RESULT_WAIT_MAX = 45
+# Sau khi block kết quả xuất hiện, tiếp tục polling cho tới khi nội dung có dữ liệu
+RESULT_POLL_MAX = 45
+RESULT_POLL_INTERVAL = 1.2
 IDLE_REFRESH_SECONDS = 300   # refresh nếu rảnh > 5 phút
 WAIT_SHORT, WAIT_MED, WAIT_LONG = 4, 10, 20
 
@@ -26,8 +30,33 @@ def _parse_code_time_text(raw_text: str):
         return "", "", ""
     t = raw_text.replace("\r", "")
     code, t_raw = "", ""
-    m1 = re.search(r"(?i)Nội dung:\s*([^\n\r]+)", t)
+    m1 = re.search(r"(?i)Nội dung\s*[:：]\s*([^\n\r]+)", t)
     if m1: code = m1.group(1).strip()
+    if not code:
+        for pattern in (
+            r"(?i)Mã\s*[:：]\s*([^\n\r]+)",
+            r"(?i)Code\s*[:：]\s*([^\n\r]+)",
+        ):
+            m_alt = re.search(pattern, t)
+            if m_alt:
+                code = m_alt.group(1).strip()
+                break
+    if code:
+        compact = re.sub(r"[^0-9]", "", code)
+        if 3 <= len(compact) <= 10:
+            code = compact
+    if not code:
+        near_nội_dung = re.search(r"(?i)Nội dung[^\n\r]*\n([^\n\r]+)", t)
+        if near_nội_dung:
+            candidate = re.sub(r"[^0-9]", "", near_nội_dung.group(1))
+            if 3 <= len(candidate) <= 10:
+                code = candidate
+    if not code:
+        seq = re.search(r"(?<!\d)(\d[\d\s-]{2,})(?!\d)", t)
+        if seq:
+            candidate = re.sub(r"[^0-9]", "", seq.group(1))
+            if 3 <= len(candidate) <= 10:
+                code = candidate
     m2 = re.search(r"(?i)Thời gian nhận:\s*([^\n\r]+)", t)
     if m2: t_raw = m2.group(1).strip()
 
@@ -211,6 +240,13 @@ class TukiPersistent:
                     EC.presence_of_element_located((By.CSS_SELECTOR, "#results-content"))
                 )
 
+                # chờ thêm cho tới khi nội dung thực sự render ra (thường mất vài giây)
+                raw = self._wait_for_result_text(root)
+                if not raw:
+                    raw = (root.text or "").strip()
+                else:
+                    raw = raw.strip()
+
                 # cảnh báo không tìm thấy
                 try:
                     warn = root.find_element(By.CSS_SELECTOR, ".alert.alert-warning")
@@ -219,7 +255,6 @@ class TukiPersistent:
                     return {"success": False, "message": msg, "kind": kind}
                 except: pass
 
-                raw = (root.text or "").strip()
                 code, t_raw, t_iso = _parse_code_time_text(raw)
 
                 self.last_active = time.time()
@@ -233,3 +268,29 @@ class TukiPersistent:
                 traceback.print_exc()
                 self._restart()
                 return {"success": False, "message": f"Lỗi: {e}", "kind": kind}
+
+    def _wait_for_result_text(self, root):
+        """Đợi tới khi block kết quả có dữ liệu thực tế (mã/link)."""
+        deadline = time.time() + RESULT_POLL_MAX
+        last_text = None
+        while time.time() < deadline:
+            text = (root.text or "").strip()
+            if text:
+                if text != last_text:
+                    # nếu là cảnh báo hoặc đã có chữ 'Thời gian'/'Thành công' thì trả ngay
+                    if re.search(r"(?i)thời gian nhận|thành công|tìm kiếm hoàn tất|mã", text):
+                        return text
+                    # nếu có số dài hoặc link => coi như có dữ liệu
+                    if re.search(r"\d{3,}", text) or "http" in text:
+                        return text
+                    if re.search(r"(?i)không tìm|không có dữ liệu|chưa có", text):
+                        return text
+                    last_text = text
+                else:
+                    # nội dung không đổi nhưng đã có đủ thông tin
+                    if re.search(r"\d{3,}", text) or "http" in text:
+                        return text
+                    if re.search(r"(?i)không tìm|không có dữ liệu|chưa có", text):
+                        return text
+            time.sleep(RESULT_POLL_INTERVAL)
+        return (root.text or "").strip()
