@@ -197,44 +197,53 @@
   </section>
 
   <section class="card" style="margin-top:22px;">
-    <div class="card-header">
-      <h2>Danh sách email</h2>
-    </div>
+    <form method="post" action="{{ url_for('admin_manage') }}" id="bulkDeleteForm">
+      <input type="hidden" name="action" value="bulk_delete">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <div class="card-header">
+        <h2>Danh sách email</h2>
+        <div class="actions">
+          <button type="submit" class="btn-secondary" id="bulkDeleteBtn" disabled>Xóa đã chọn</button>
+        </div>
+      </div>
 
-    <div class="table-wrapper">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Số điện thoại</th>
-            <th>Hạn sử dụng</th>
-            <th>Trạng thái</th>
-            <th>Ghi chú</th>
-            <th>Đăng ký</th>
-            <th>Cập nhật</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% if emails %}
-            {% for e in emails %}
-              <tr class="status-row">
-                <td class="mono email-cell"><a href="mailto:{{ e.email }}">{{ e.email }}</a></td>
-                <td class="mono phone-cell">{{ e.phone or '—' }}</td>
-                <td>{{ e.expiry_display }}</td>
-                <td><span class="status-pill {{ e.status_badge }}">{{ e.status_label }}</span></td>
-                <td>{{ e.notes or '—' }}</td>
-                <td>{{ e.created_at }}</td>
-                <td>{{ e.updated_at }}</td>
-              </tr>
-            {% endfor %}
-          {% else %}
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
             <tr>
-              <td colspan="7" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có email nào phù hợp.</td>
+              <th class="select-col"><input type="checkbox" id="selectAllEmails"></th>
+              <th>Email</th>
+              <th>Số điện thoại</th>
+              <th>Hạn sử dụng</th>
+              <th>Trạng thái</th>
+              <th>Ghi chú</th>
+              <th>Đăng ký</th>
+              <th>Cập nhật</th>
             </tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {% if emails %}
+              {% for e in emails %}
+                <tr class="status-row">
+                  <td class="select-col"><input type="checkbox" class="email-select" name="customer_ids" value="{{ e.id }}"></td>
+                  <td class="mono email-cell"><span class="email-copy" data-copy-email="{{ e.email }}">{{ e.email }}</span></td>
+                  <td class="mono phone-cell">{{ e.phone or '—' }}</td>
+                  <td>{{ e.expiry_display }}</td>
+                  <td><span class="status-pill {{ e.status_badge }}">{{ e.status_label }}</span></td>
+                  <td>{{ e.notes or '—' }}</td>
+                  <td>{{ e.created_at }}</td>
+                  <td>{{ e.updated_at }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="8" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có email nào phù hợp.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </form>
   </section>
 {% endif %}
 {% endblock %}

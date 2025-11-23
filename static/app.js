@@ -1,14 +1,14 @@
 // static/app.js (REPLACE your old file with this)
 document.addEventListener('DOMContentLoaded', () => {
+  const isAdminPage = window.location.pathname.startsWith('/admin');
   const emailInput = document.querySelector('input[name="email"]');
   const passInput  = document.querySelector('input[name="password"]');
   const btnLogin   = document.getElementById('btnLoginCode');
   const btnVerify  = document.getElementById('btnVerifyLink');
   const resEl      = document.getElementById('result');
   const form       = document.getElementById('fetchForm');
-  const isAdminPage = window.location.pathname.startsWith('/admin');
 
-  if (!resEl) {
+  if (!isAdminPage && !resEl) {
     console.warn('result element not found (#result)');
     return;
   }
@@ -62,14 +62,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setLoading(msg = 'Đang lấy dữ liệu...') {
+    if (!resEl) return;
     resEl.innerHTML = `<div class="alert info">${msg}</div>`;
   }
 
   function showError(msg) {
+    if (!resEl) return;
     resEl.innerHTML = `<div class="alert danger">❌ ${msg}</div>`;
   }
 
   function showWarn(msg) {
+    if (!resEl) return;
     resEl.innerHTML = `<div class="alert warn">⚠️ ${msg}</div>`;
   }
 
@@ -87,6 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const linkHtml = linkVisible ? `<div class="result-line"><strong>${linkLabel}:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
     const safeContent = content ? escapeHtml(content) : '';
     const contentHtml = contentVisible ? `<div class="result-line"><strong>Nội dung:</strong> <pre class="result-content">${safeContent}</pre></div>` : '';
+    if (!resEl) return;
+
     resEl.innerHTML = `<div class="alert success">
         <div class="success-title">✅ Thành công</div>
         ${codeHtml}
@@ -209,4 +214,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnLogin?.addEventListener('click', () => callAPI('login_code'));
   btnVerify?.addEventListener('click', () => callAPI('verify_link'));
+
+  // === Admin helpers ===
+  const bulkDeleteForm = document.getElementById('bulkDeleteForm');
+  const selectAllEmails = document.getElementById('selectAllEmails');
+  const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+  const emailCheckboxes = bulkDeleteForm ? Array.from(bulkDeleteForm.querySelectorAll('.email-select')) : [];
+
+  function refreshBulkDeleteState() {
+    if (!bulkDeleteBtn) return;
+    const checkedCount = emailCheckboxes.filter((cb) => cb.checked).length;
+    bulkDeleteBtn.disabled = checkedCount === 0;
+    if (selectAllEmails) {
+      const allChecked = emailCheckboxes.length > 0 && checkedCount === emailCheckboxes.length;
+      selectAllEmails.checked = allChecked;
+      const someChecked = checkedCount > 0 && checkedCount < emailCheckboxes.length;
+      selectAllEmails.indeterminate = someChecked;
+    }
+  }
+
+  if (bulkDeleteForm) {
+    selectAllEmails?.addEventListener('change', () => {
+      emailCheckboxes.forEach((cb) => {
+        cb.checked = !!selectAllEmails.checked;
+      });
+      refreshBulkDeleteState();
+    });
+
+    emailCheckboxes.forEach((cb) => cb.addEventListener('change', refreshBulkDeleteState));
+
+    bulkDeleteForm.addEventListener('submit', (e) => {
+      const hasSelection = emailCheckboxes.some((cb) => cb.checked);
+      if (!hasSelection) {
+        e.preventDefault();
+        return;
+      }
+      if (!confirm('Xóa các email đã chọn?')) {
+        e.preventDefault();
+      }
+    });
+
+    refreshBulkDeleteState();
+  }
+
+  const emailCopySpans = document.querySelectorAll('.email-copy[data-copy-email]');
+  function copyEmailValue(el) {
+    const value = el?.dataset?.copyEmail || el?.textContent?.trim();
+    if (!value) return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(value).catch(() => {});
+    }
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 1200);
+  }
+
+  emailCopySpans.forEach((span) => {
+    span.addEventListener('click', () => copyEmailValue(span));
+    span.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        copyEmailValue(span);
+      }
+    });
+    span.setAttribute('tabindex', '0');
+    span.setAttribute('role', 'button');
+    span.setAttribute('aria-label', 'Nhấp để sao chép email');
+  });
 });
