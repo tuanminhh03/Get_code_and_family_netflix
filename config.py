@@ -13,3 +13,13 @@ ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'adminpass')
 
 # ✅ đảm bảo có TUKI_URL; có thể để default đúng trang hiện tại
 TUKI_URL = os.getenv('TUKI_URL', 'https://tukitech.com/user_management/customer_login/')
+
+
+def _as_bool(value: str | None, default: bool = True) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+# Bật headless khi chạy trên Ubuntu/SSH để Chrome không cần UI.
+TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=True)

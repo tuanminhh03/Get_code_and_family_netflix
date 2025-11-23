@@ -154,8 +154,9 @@ _worker = None
 def ensure_worker():
     global _worker
     if _worker is None:
-        print("⚙️  Khởi tạo phiên Tukitech ...")
-        _worker = TukiPersistent(headless=False)
+        headless = getattr(config, "TUKI_HEADLESS", True)
+        print(f"⚙️  Khởi tạo phiên Tukitech ... (headless={headless})")
+        _worker = TukiPersistent(headless=headless)
     return _worker
 
 
