@@ -144,6 +144,10 @@ def _safe_next(target: str | None):
 def _normalize_email(value: str):
     return (value or "").strip().lower()
 
+
+def _normalize_phone(value: str):
+    return re.sub(r"\s+", "", (value or "").strip())
+
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
 
@@ -189,7 +193,7 @@ def admin():
         .all()
     )
     for phone_value, count in email_usage_rows:
-        normalized_phone = (phone_value or "").strip()
+        normalized_phone = _normalize_phone(phone_value)
         if not normalized_phone:
             continue
         phone_email_counts[normalized_phone] = count
@@ -210,22 +214,41 @@ def admin():
     total_customers = 0
     counts = {"active": 0, "expiring": 0, "expired": 0}
     customers_view = []
+    emails_view = []
 
     for customer in customers:
         status = _evaluate_status(customer.expiry_date, today)
         counts[status] += 1
         total_customers += 1
 
-        if status_filter != 'all' and status != status_filter:
-            continue
-
         meta = _status_meta(status)
         days_remaining = None
         if customer.expiry_date:
             days_remaining = (customer.expiry_date - today).days
 
-        normalized_phone = (customer.phone or "").strip()
+        normalized_phone = _normalize_phone(customer.phone)
         email_usage_count = phone_email_counts.get(normalized_phone, 0)
+
+        if status_filter != 'all' and status != status_filter:
+            continue
+
+        if customer.email:
+            emails_view.append(
+                {
+                    "id": customer.id,
+                    "email": customer.email,
+                    "phone": customer.phone or "",
+                    "expiry_display": customer.expiry_display,
+                    "status_label": meta["label"],
+                    "status_badge": meta["badge"],
+                    "notes": customer.notes or "",
+                    "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
+                    "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
+                }
+            )
+
+        if not normalized_phone:
+            continue
 
         customers_view.append(
             {
@@ -270,6 +293,7 @@ def admin():
     return render_template(
         'admin.html',
         customers=customers_view,
+        emails=emails_view,
         stats=stats,
         search=search,
         status_filter=status_filter,
@@ -456,6 +480,48 @@ def admin_logout():
     return redirect(url_for('admin'))
 
 
+@app.route('/admin/emails/bulk_delete', methods=['POST'])
+def admin_bulk_delete_emails():
+    if not session.get('is_admin'):
+        flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
+        return redirect(url_for('admin'))
+
+    ensure_database()
+
+    next_url = _safe_next(request.form.get('next'))
+    id_values = request.form.getlist('email_ids')
+    to_delete: list[int] = []
+
+    for raw in id_values:
+        try:
+            to_delete.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+
+    if not to_delete:
+        flash('Vui lòng chọn ít nhất một email để xóa.', 'warning')
+        return redirect(next_url)
+
+    rows = (
+        Customer.query.filter(
+            Customer.id.in_(to_delete), Customer.email.isnot(None), Customer.email != ""
+        )
+        .all()
+    )
+
+    if not rows:
+        flash('Không tìm thấy email hợp lệ để xóa.', 'warning')
+        return redirect(next_url)
+
+    deleted_count = len(rows)
+    for row in rows:
+        db.session.delete(row)
+
+    db.session.commit()
+    flash(f'Đã xóa {deleted_count} email.', 'success')
+    return redirect(next_url)
+
+
 # === API ===
 @app.route('/api/fetch', methods=['POST'])
 def api_fetch():
@@ -466,9 +532,11 @@ def api_fetch():
         email_raw = (data or {}).get('email', '')
         target_email_raw = (data or {}).get('target_email', '')
         kind = (data or {}).get('kind', 'login_code')
+        phone_raw = (data or {}).get('password', '')
 
         email = _normalize_email(email_raw)
         target_email = _normalize_email(target_email_raw) or email
+        phone = _normalize_phone(phone_raw)
 
         # The email actually used by the worker to fetch. If target provided, use it; else requester
         fetch_email = (target_email_raw or email_raw or '').strip()
@@ -478,7 +546,22 @@ def api_fetch():
         if kind not in ("login_code", "verify_link"):
             return jsonify({"success": False, "message": f"kind không hợp lệ: {kind}"}), 400
 
+        PHONE_NOT_ALLOWED_MSG = (
+            "Số điện thoại hết hạn hoặc chưa được đăng kí, vui lòng liên hệ với seller để được gia hạn"
+        )
+
+        if not phone:
+            return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
+
         ensure_database()
+
+        phone_holder = Customer.query.filter(func.lower(Customer.phone) == phone.lower()).first()
+        if not phone_holder:
+            return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
+
+        phone_status = _evaluate_status(phone_holder.expiry_date)
+        if phone_status == 'expired':
+            return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
 
         # Validate requester
         requester = Customer.query.filter(func.lower(Customer.email) == email).first()

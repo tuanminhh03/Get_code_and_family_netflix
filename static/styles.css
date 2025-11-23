@@ -275,6 +275,22 @@ label small::before{
 .email-cell a:hover{
   text-decoration:underline;
 }
+.email-cell .copy-email{
+  background:none;
+  border:none;
+  color:#d4e4ff;
+  cursor:pointer;
+  text-align:left;
+  padding:0;
+  font:inherit;
+  word-break:break-all;
+}
+.email-cell .copy-email:hover{
+  text-decoration:underline;
+}
+.email-cell .copy-email.copied{
+  color:#3de6c0;
+}
 .phone-cell{
   white-space:nowrap;
 }
