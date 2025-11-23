@@ -235,6 +235,7 @@ def admin():
         if customer.email:
             emails_view.append(
                 {
+                    "id": customer.id,
                     "email": customer.email,
                     "phone": customer.phone or "",
                     "expiry_display": customer.expiry_display,
@@ -398,6 +399,29 @@ def admin_manage():
         db.session.delete(customer)
         db.session.commit()
         flash('Đã xóa khách hàng.', 'success')
+        return redirect(next_url)
+
+    if action == 'bulk_delete':
+        raw_ids = request.form.getlist('customer_ids')
+        try:
+            ids = [int(val) for val in raw_ids]
+        except (TypeError, ValueError):
+            ids = []
+
+        if not ids:
+            flash('Vui lòng chọn ít nhất một email để xóa.', 'warning')
+            return redirect(next_url)
+
+        customers_to_delete = Customer.query.filter(Customer.id.in_(ids)).all()
+        if not customers_to_delete:
+            flash('Không tìm thấy email cần xóa.', 'warning')
+            return redirect(next_url)
+
+        for customer in customers_to_delete:
+            db.session.delete(customer)
+
+        db.session.commit()
+        flash(f'Đã xóa {len(customers_to_delete)} email.', 'success')
         return redirect(next_url)
 
     flash('Hành động không hợp lệ.', 'danger')

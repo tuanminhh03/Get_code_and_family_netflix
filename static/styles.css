@@ -267,13 +267,45 @@ label small::before{
   border-bottom:none;
 }
 
-.email-cell a{
+.select-col{
+  width:52px;
+  text-align:center;
+}
+.select-col input[type="checkbox"]{
+  transform: scale(1.1);
+  cursor:pointer;
+}
+
+.email-copy{
   color:#d4e4ff;
   text-decoration:none;
   word-break:break-all;
+  cursor:pointer;
+  position:relative;
+  padding-right:10px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
 }
-.email-cell a:hover{
-  text-decoration:underline;
+.email-copy::after{
+  content:'Nhấp để sao chép';
+  color:var(--muted);
+  font-size:12px;
+  opacity:0;
+  translate: 0 2px;
+  transition: opacity .15s ease;
+}
+.email-copy:hover::after,
+.email-copy:focus-visible::after,
+.email-copy.copied::after{
+  opacity:1;
+}
+.email-copy.copied{
+  color:#9fd6ff;
+}
+.email-copy.copied::after{
+  content:'Đã sao chép!';
+  color:#8ae7c7;
 }
 .phone-cell{
   white-space:nowrap;
