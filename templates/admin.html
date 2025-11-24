@@ -71,6 +71,42 @@
   </div>
 
   <div class="card" style="margin-top:22px;">
+    <div class="card-header" style="align-items:flex-start;">
+      <div>
+        <h2>Nhật ký hoạt động</h2>
+        <p class="subtle" style="margin:4px 0 0;">Các lượt request mới nhất từ khách hàng sẽ xuất hiện tại đây.</p>
+      </div>
+    </div>
+    <div class="activity-list">
+      {% if recent_activities %}
+        {% for log in recent_activities %}
+          <div class="activity-item">
+            <div class="activity-top">
+              <div class="activity-kind">{{ log.kind }}</div>
+              <div class="activity-time">{{ log.created_at }}</div>
+            </div>
+            <div class="activity-message">
+              {% if log.success %}
+                <span class="tag-success">✅ Thành công</span>
+              {% else %}
+                <span class="tag-fail">⚠️ Thất bại</span>
+              {% endif %}
+              — {{ log.message }}
+            </div>
+            <div class="activity-meta">
+              <span>📞 {{ log.phone }}</span>
+              <span>👤 Requester: {{ log.requester }}</span>
+              <span>🎯 Target: {{ log.target }}</span>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="alert info">Chưa có lượt request nào.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:22px;">
     <div class="card-header">
       <h2>Import danh sách email</h2>
     </div>
