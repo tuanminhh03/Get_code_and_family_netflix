@@ -325,6 +325,30 @@ def admin():
         "renewal_rate": renewal_rate,
     }
 
+    # Lấy nhật ký hoạt động gần đây (tối đa 50 bản ghi)
+    recent_logs = (
+        ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(50).all()
+    )
+    log_customer_ids = [log.customer_id for log in recent_logs if log.customer_id]
+    phone_map = {}
+    if log_customer_ids:
+        related_customers = Customer.query.filter(Customer.id.in_(log_customer_ids)).all()
+        phone_map = {c.id: c.phone for c in related_customers}
+
+    recent_activities = [
+        {
+            "id": log.id,
+            "phone": phone_map.get(log.customer_id, "—"),
+            "requester": log.requester_email or "—",
+            "target": log.target_email or "—",
+            "kind": log.kind_label,
+            "success": log.success,
+            "message": log.message or ("Thành công" if log.success else "Thất bại"),
+            "created_at": log.created_at.strftime("%d/%m/%Y %H:%M"),
+        }
+        for log in recent_logs
+    ]
+
     next_url = request.full_path.rstrip('?')
 
     return render_template(
@@ -334,6 +358,7 @@ def admin():
         stats=stats,
         search=search,
         status_filter=status_filter,
+        recent_activities=recent_activities,
         next_url=next_url,
     )
 
