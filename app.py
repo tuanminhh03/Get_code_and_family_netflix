@@ -356,6 +356,7 @@ def admin():
             "success": log.success,
             "message": log.message or ("Thành công" if log.success else "Thất bại"),
             "created_at": _format_local_time(log.created_at),
+
         }
         for log in recent_logs
     ]
