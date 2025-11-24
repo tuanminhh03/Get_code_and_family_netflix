@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnVerify  = document.getElementById('btnVerifyLink');
   const resEl      = document.getElementById('result');
   const form       = document.getElementById('fetchForm');
+  const activityModal = document.getElementById('activityModal');
+  const activitySubtitle = document.getElementById('activitySubtitle');
+  const activityLogs = document.getElementById('activityLogs');
 
   if (!isAdminPage && !resEl) {
     console.warn('result element not found (#result)');
@@ -15,6 +18,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Prevent default form submit
   if (form) form.addEventListener('submit', (e) => e.preventDefault());
+
+  function closeModal(){
+    if (!activityModal) return;
+    activityModal.classList.add('hidden');
+  }
+
+  function openModal(){
+    if (!activityModal) return;
+    activityModal.classList.remove('hidden');
+  }
+
+  if (activityModal){
+    activityModal.querySelectorAll('[data-close-modal]').forEach((btn)=>{
+      btn.addEventListener('click', closeModal);
+    });
+  }
 
   // helper: extract first URL from text
   function extractFirstUrl(text) {
@@ -230,6 +249,95 @@ document.addEventListener('DOMContentLoaded', () => {
       selectAllEmails.checked = allChecked;
       const someChecked = checkedCount > 0 && checkedCount < emailCheckboxes.length;
       selectAllEmails.indeterminate = someChecked;
+    }
+  }
+
+  function buildActivityHTML(log){
+    const statusTag = log.success ? '<span class="tag-success">Thành công</span>' : '<span class="tag-fail">Thất bại</span>';
+    const message = log.message ? log.message : '';
+    const requester = log.requester_email ? `Requester: ${log.requester_email}` : '';
+    const target = log.target_email ? `Target: ${log.target_email}` : '';
+    const phone = log.phone ? `SĐT: ${log.phone}` : '';
+    const metaParts = [statusTag, phone, requester, target].filter(Boolean);
+    return `<div class="activity-item">
+        <div class="activity-top">
+          <div class="activity-kind">${log.kind}</div>
+          <div class="activity-time">${log.created_at}</div>
+        </div>
+        <div class="activity-message">${message}</div>
+        <div class="activity-meta">${metaParts.join(' • ')}</div>
+      </div>`;
+  }
+
+  function renderActivityList(targetEl, logs, emptyHtml){
+    if (!targetEl) return;
+    if (!logs || logs.length === 0){
+      targetEl.innerHTML = emptyHtml || '<div class="alert warn">Chưa có nhật ký hoạt động.</div>';
+      return;
+    }
+    targetEl.innerHTML = logs.map(buildActivityHTML).join('');
+  }
+
+  async function loadActivityLogs(customerId, phoneLabel){
+    if (!activityLogs || !activitySubtitle) return;
+    activityLogs.innerHTML = '<div class="alert info">Đang tải nhật ký...</div>';
+    activitySubtitle.textContent = `Số điện thoại: ${phoneLabel}`;
+    openModal();
+    try {
+      const resp = await fetch(`/admin/activity/${customerId}`);
+      const data = await resp.json();
+      if (!data?.success){
+        activityLogs.innerHTML = `<div class="alert danger">${data?.message || 'Không thể tải nhật ký.'}</div>`;
+        return;
+      }
+      renderActivityList(activityLogs, data.logs);
+    } catch (err){
+      activityLogs.innerHTML = '<div class="alert danger">Lỗi khi tải nhật ký.</div>';
+    }
+  }
+
+  if (isAdminPage){
+    document.querySelectorAll('.phone-log-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const customerId = btn.getAttribute('data-customer-id');
+        const phone = btn.getAttribute('data-phone') || '';
+        if (customerId){
+          loadActivityLogs(customerId, phone);
+        }
+      });
+    });
+
+    const activityFeed = document.getElementById('activityFeed');
+    const activityRefreshBtn = document.getElementById('activityRefreshBtn');
+
+    if (activityFeed){
+      try {
+        const initialData = JSON.parse(activityFeed.dataset.initialActivity || '[]');
+        renderActivityList(activityFeed, initialData, '<div class="alert warn">Chưa có nhật ký hoạt động.</div>');
+      } catch (_err){
+        renderActivityList(activityFeed, [], '<div class="alert warn">Chưa có nhật ký hoạt động.</div>');
+      }
+    }
+
+    async function refreshActivityFeed(){
+      if (!activityFeed) return;
+      activityFeed.innerHTML = '<div class="alert info">Đang tải nhật ký...</div>';
+      try {
+        const resp = await fetch('/admin/activity-feed');
+        const data = await resp.json();
+        if (!data?.success){
+          activityFeed.innerHTML = `<div class="alert danger">${data?.message || 'Không thể tải nhật ký.'}</div>`;
+          return;
+        }
+        renderActivityList(activityFeed, data.logs, '<div class="alert warn">Chưa có nhật ký hoạt động.</div>');
+      } catch (_err){
+        activityFeed.innerHTML = '<div class="alert danger">Lỗi khi tải nhật ký.</div>';
+      }
+    }
+
+    activityRefreshBtn?.addEventListener('click', refreshActivityFeed);
+    if (activityFeed){
+      setInterval(refreshActivityFeed, 15000);
     }
   }
 

@@ -363,6 +363,83 @@ label small::before{
 .actions-cell .edit-form{ display:grid; gap:12px; margin:12px 0; }
 .actions-cell form + form{ margin-top:10px; }
 
+.link-btn{
+  background:none;
+  border:none;
+  color:var(--primary);
+  cursor:pointer;
+  padding:0;
+  font:inherit;
+}
+.link-btn:hover{ text-decoration:underline; }
+
+.modal{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:50;
+}
+.modal.hidden{ display:none; }
+.modal-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,0.6);
+}
+.modal-content{
+  position:relative;
+  background:#0c1422;
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px;
+  padding:18px 20px;
+  width:min(720px,95vw);
+  max-height:80vh;
+  overflow:hidden;
+  box-shadow:0 20px 50px rgba(0,0,0,0.35);
+  animation:pop .2s ease;
+}
+.modal-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+.modal-body{ overflow-y:auto; max-height:calc(80vh - 60px); padding-right:6px; }
+.btn-close{
+  background:none;
+  border:none;
+  color:#fff;
+  font-size:24px;
+  cursor:pointer;
+  line-height:1;
+}
+.activity-list{ display:flex; flex-direction:column; gap:10px; }
+.activity-item{
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:10px;
+  padding:10px 12px;
+  background:#0f1c2d;
+}
+.activity-feed-body{
+  max-height:340px;
+  overflow-y:auto;
+  padding-right:6px;
+}
+.activity-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.activity-kind{ font-weight:600; color:var(--primary); }
+.activity-time{ color:var(--muted); font-size:13px; }
+.activity-message{ margin:6px 0 4px; }
+.activity-meta{ color:var(--muted); font-size:13px; display:flex; gap:10px; flex-wrap:wrap; }
+.tag-success{ color:#6ce5b1; }
+.tag-fail{ color:#ff7b7b; }
+
+@keyframes pop{
+  from{ transform:scale(.96); opacity:0; }
+  to{ transform:scale(1); opacity:1; }
+}
+
 @media (max-width: 720px){
   .mini-value{ font-size:26px; }
   .filters input,
