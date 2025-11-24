@@ -184,6 +184,17 @@ def _log_activity(customer_id: int | None, *, requester_email: str, target_email
         db.session.rollback()
         print("[ActivityLog] Không thể lưu nhật ký", flush=True)
 
+
+def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
+    if not value:
+        return ""
+    try:
+        utc_dt = value.replace(tzinfo=timezone.utc)
+        local_dt = utc_dt.astimezone(timezone(timedelta(hours=tz_offset_hours)))
+        return local_dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return value.strftime("%d/%m/%Y %H:%M")
+
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
 
@@ -325,6 +336,30 @@ def admin():
         "renewal_rate": renewal_rate,
     }
 
+    # Lấy nhật ký hoạt động gần đây (tối đa 50 bản ghi)
+    recent_logs = (
+        ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(50).all()
+    )
+    log_customer_ids = [log.customer_id for log in recent_logs if log.customer_id]
+    phone_map = {}
+    if log_customer_ids:
+        related_customers = Customer.query.filter(Customer.id.in_(log_customer_ids)).all()
+        phone_map = {c.id: c.phone for c in related_customers}
+
+    recent_activities = [
+        {
+            "id": log.id,
+            "phone": phone_map.get(log.customer_id, "—"),
+            "requester": log.requester_email or "—",
+            "target": log.target_email or "—",
+            "kind": log.kind_label,
+            "success": log.success,
+            "message": log.message or ("Thành công" if log.success else "Thất bại"),
+            "created_at": _format_local_time(log.created_at),
+        }
+        for log in recent_logs
+    ]
+
     next_url = request.full_path.rstrip('?')
 
     return render_template(
@@ -334,6 +369,7 @@ def admin():
         stats=stats,
         search=search,
         status_filter=status_filter,
+        recent_activities=recent_activities,
         next_url=next_url,
     )
 
@@ -360,7 +396,7 @@ def admin_activity(customer_id: int):
             "raw_kind": log.kind,
             "success": log.success,
             "message": log.message,
-            "created_at": log.created_at.strftime("%d/%m/%Y %H:%M"),
+            "created_at": _format_local_time(log.created_at),
         }
         for log in logs
     ]
