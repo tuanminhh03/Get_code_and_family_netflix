@@ -184,6 +184,17 @@ def _log_activity(customer_id: int | None, *, requester_email: str, target_email
         db.session.rollback()
         print("[ActivityLog] Không thể lưu nhật ký", flush=True)
 
+
+def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
+    if not value:
+        return ""
+    try:
+        utc_dt = value.replace(tzinfo=timezone.utc)
+        local_dt = utc_dt.astimezone(timezone(timedelta(hours=tz_offset_hours)))
+        return local_dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return value.strftime("%d/%m/%Y %H:%M")
+
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
 
@@ -344,7 +355,8 @@ def admin():
             "kind": log.kind_label,
             "success": log.success,
             "message": log.message or ("Thành công" if log.success else "Thất bại"),
-            "created_at": log.created_at.strftime("%d/%m/%Y %H:%M"),
+            "created_at": _format_local_time(log.created_at),
+
         }
         for log in recent_logs
     ]
@@ -385,7 +397,7 @@ def admin_activity(customer_id: int):
             "raw_kind": log.kind,
             "success": log.success,
             "message": log.message,
-            "created_at": log.created_at.strftime("%d/%m/%Y %H:%M"),
+            "created_at": _format_local_time(log.created_at),
         }
         for log in logs
     ]
