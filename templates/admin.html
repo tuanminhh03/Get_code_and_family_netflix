@@ -132,7 +132,13 @@
           {% if customers %}
             {% for c in customers %}
               <tr class="status-row {{ c.row_class }}">
-                <td class="mono phone-cell">{{ c.phone or '—' }}</td>
+                <td class="mono phone-cell">
+                  {% if c.phone %}
+                    <button type="button" class="link-btn phone-log-btn" data-customer-id="{{ c.id }}" data-phone="{{ c.phone }}">{{ c.phone }}</button>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
                 <td>
                   {% if c.phone %}
                     {% if c.phone_email_count %}
@@ -245,5 +251,18 @@
       </div>
     </form>
   </section>
+  <div id="activityModal" class="modal hidden">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Nhật ký hoạt động</h3>
+        <button class="btn-close" type="button" data-close-modal>&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="subtle" id="activitySubtitle"></p>
+        <div id="activityLogs" class="activity-list"></div>
+      </div>
+    </div>
+  </div>
 {% endif %}
 {% endblock %}

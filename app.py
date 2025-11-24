@@ -103,6 +103,25 @@ class Customer(db.Model):
         return self.expiry_date.strftime("%d/%m/%Y")
 
 
+class ActivityLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, index=True)
+    requester_email = db.Column(db.String(255))
+    target_email = db.Column(db.String(255))
+    kind = db.Column(db.String(50))
+    success = db.Column(db.Boolean, default=False)
+    message = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def kind_label(self):
+        mapping = {
+            "login_code": "Mã đăng nhập",
+            "verify_link": "Link hộ gia đình",
+        }
+        return mapping.get(self.kind, self.kind or "Khác")
+
+
 def _parse_date(value: str):
     if not value:
         return None
@@ -147,6 +166,23 @@ def _normalize_email(value: str):
 
 def _normalize_phone(value: str):
     return re.sub(r"\s+", "", (value or "").strip())
+
+
+def _log_activity(customer_id: int | None, *, requester_email: str, target_email: str, kind: str, success: bool, message: str):
+    try:
+        entry = ActivityLog(
+            customer_id=customer_id,
+            requester_email=requester_email or "",
+            target_email=target_email or "",
+            kind=kind or "",
+            success=bool(success),
+            message=message or "",
+        )
+        db.session.add(entry)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        print("[ActivityLog] Không thể lưu nhật ký", flush=True)
 
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
@@ -300,6 +336,36 @@ def admin():
         status_filter=status_filter,
         next_url=next_url,
     )
+
+
+@app.route('/admin/activity/<int:customer_id>')
+def admin_activity(customer_id: int):
+    if not session.get('is_admin'):
+        return jsonify({"success": False, "message": "Chưa đăng nhập."}), 403
+
+    ensure_database()
+
+    logs = (
+        ActivityLog.query.filter(ActivityLog.customer_id == customer_id)
+        .order_by(ActivityLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    payload = [
+        {
+            "id": log.id,
+            "requester_email": log.requester_email,
+            "target_email": log.target_email,
+            "kind": log.kind_label,
+            "raw_kind": log.kind,
+            "success": log.success,
+            "message": log.message,
+            "created_at": log.created_at.strftime("%d/%m/%Y %H:%M"),
+        }
+        for log in logs
+    ]
+
+    return jsonify({"success": True, "logs": payload})
 
 
 @app.route('/admin/manage', methods=['POST'])
@@ -520,6 +586,16 @@ def api_fetch():
         target_email = _normalize_email(target_email_raw) or email
         phone = _normalize_phone(phone_raw)
 
+        def log_attempt(*, customer_id: int | None, success: bool, message: str):
+            _log_activity(
+                customer_id,
+                requester_email=email,
+                target_email=target_email,
+                kind=kind,
+                success=success,
+                message=message,
+            )
+
         # The email actually used by the worker to fetch. If target provided, use it; else requester
         fetch_email = (target_email_raw or email_raw or '').strip()
 
@@ -539,28 +615,34 @@ def api_fetch():
 
         phone_holder = Customer.query.filter(func.lower(Customer.phone) == phone.lower()).first()
         if not phone_holder:
+            log_attempt(customer_id=None, success=False, message="Số điện thoại không hợp lệ")
             return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
 
         phone_status = _evaluate_status(phone_holder.expiry_date)
         if phone_status == 'expired':
+            log_attempt(customer_id=phone_holder.id, success=False, message="Số điện thoại hết hạn")
             return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
 
         # Validate requester
         requester = Customer.query.filter(func.lower(Customer.email) == email).first()
         if not requester:
+            log_attempt(customer_id=phone_holder.id, success=False, message="Email requester không hợp lệ")
             return jsonify({"success": False, "message": "Email không hợp lệ hoặc chưa được cấp quyền, vui lòng liên hệ admin."}), 403
 
         status = _evaluate_status(requester.expiry_date)
         if status == 'expired':
+            log_attempt(customer_id=phone_holder.id, success=False, message="Gói requester hết hạn")
             return jsonify({"success": False, "message": "Gói Netflix của bạn đã hết hạn, vui lòng liên hệ admin để được gia hạn."}), 403
 
         # Validate target (can be the same as requester)
         target = Customer.query.filter(func.lower(Customer.email) == target_email).first()
         if not target:
+            log_attempt(customer_id=phone_holder.id, success=False, message="Email đích không tồn tại")
             return jsonify({"success": False, "message": "Email đích không tồn tại trong hệ thống."}), 404
 
         target_status = _evaluate_status(target.expiry_date)
         if target_status == 'expired':
+            log_attempt(customer_id=phone_holder.id, success=False, message="Email đích hết hạn")
             return jsonify({"success": False, "message": "Email đích đã hết hạn, vui lòng liên hệ admin."}), 403
 
         worker = ensure_worker()
@@ -582,6 +664,7 @@ def api_fetch():
         if isinstance(result, dict):
             if result.get("success") is False:
                 message = result.get("message") or "Phản hồi không thành công từ worker"
+                log_attempt(customer_id=phone_holder.id, success=False, message=message)
                 return jsonify({"success": False, "message": message}), 502
 
             code = (result.get("code") or result.get("result") or "").strip()
@@ -623,6 +706,8 @@ def api_fetch():
             "requester_email": requester.email,
             "target_email": target.email,
         }
+
+        log_attempt(customer_id=phone_holder.id, success=True, message="Thành công")
 
         return jsonify(response_payload)
 

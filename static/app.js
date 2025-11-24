@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnVerify  = document.getElementById('btnVerifyLink');
   const resEl      = document.getElementById('result');
   const form       = document.getElementById('fetchForm');
+  const activityModal = document.getElementById('activityModal');
+  const activitySubtitle = document.getElementById('activitySubtitle');
+  const activityLogs = document.getElementById('activityLogs');
 
   if (!isAdminPage && !resEl) {
     console.warn('result element not found (#result)');
@@ -15,6 +18,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Prevent default form submit
   if (form) form.addEventListener('submit', (e) => e.preventDefault());
+
+  function closeModal(){
+    if (!activityModal) return;
+    activityModal.classList.add('hidden');
+  }
+
+  function openModal(){
+    if (!activityModal) return;
+    activityModal.classList.remove('hidden');
+  }
+
+  if (activityModal){
+    activityModal.querySelectorAll('[data-close-modal]').forEach((btn)=>{
+      btn.addEventListener('click', closeModal);
+    });
+  }
 
   // helper: extract first URL from text
   function extractFirstUrl(text) {
@@ -231,6 +250,53 @@ document.addEventListener('DOMContentLoaded', () => {
       const someChecked = checkedCount > 0 && checkedCount < emailCheckboxes.length;
       selectAllEmails.indeterminate = someChecked;
     }
+  }
+
+  async function loadActivityLogs(customerId, phoneLabel){
+    if (!activityLogs || !activitySubtitle) return;
+    activityLogs.innerHTML = '<div class="alert info">Đang tải nhật ký...</div>';
+    activitySubtitle.textContent = `Số điện thoại: ${phoneLabel}`;
+    openModal();
+    try {
+      const resp = await fetch(`/admin/activity/${customerId}`);
+      const data = await resp.json();
+      if (!data?.success){
+        activityLogs.innerHTML = `<div class="alert danger">${data?.message || 'Không thể tải nhật ký.'}</div>`;
+        return;
+      }
+      if (!data.logs || data.logs.length === 0){
+        activityLogs.innerHTML = '<div class="alert warn">Chưa có nhật ký hoạt động.</div>';
+        return;
+      }
+      activityLogs.innerHTML = data.logs.map(log => {
+        const statusTag = log.success ? '<span class="tag-success">Thành công</span>' : '<span class="tag-fail">Thất bại</span>';
+        const message = log.message ? log.message : '';
+        const requester = log.requester_email ? `Requester: ${log.requester_email}` : '';
+        const target = log.target_email ? `Target: ${log.target_email}` : '';
+        return `<div class="activity-item">
+            <div class="activity-top">
+              <div class="activity-kind">${log.kind}</div>
+              <div class="activity-time">${log.created_at}</div>
+            </div>
+            <div class="activity-message">${message}</div>
+            <div class="activity-meta">${statusTag}${requester ? ` • ${requester}` : ''}${target ? ` • ${target}` : ''}</div>
+          </div>`;
+      }).join('');
+    } catch (err){
+      activityLogs.innerHTML = '<div class="alert danger">Lỗi khi tải nhật ký.</div>';
+    }
+  }
+
+  if (isAdminPage){
+    document.querySelectorAll('.phone-log-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const customerId = btn.getAttribute('data-customer-id');
+        const phone = btn.getAttribute('data-phone') || '';
+        if (customerId){
+          loadActivityLogs(customerId, phone);
+        }
+      });
+    });
   }
 
   if (bulkDeleteForm) {
