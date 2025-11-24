@@ -416,6 +416,7 @@ label small::before{
   line-height:1;
 }
 .activity-list{ display:flex; flex-direction:column; gap:10px; }
+.activity-scroll{ max-height:420px; overflow-y:auto; padding-right:4px; }
 .activity-item{
   border:1px solid rgba(255,255,255,0.08);
   border-radius:10px;

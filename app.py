@@ -336,9 +336,9 @@ def admin():
         "renewal_rate": renewal_rate,
     }
 
-    # Lấy nhật ký hoạt động gần đây (tối đa 50 bản ghi)
+    # Lấy nhật ký hoạt động gần đây (tối đa 100 bản ghi)
     recent_logs = (
-        ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(50).all()
+        ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(100).all()
     )
     log_customer_ids = [log.customer_id for log in recent_logs if log.customer_id]
     phone_map = {}
