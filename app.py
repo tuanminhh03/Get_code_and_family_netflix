@@ -212,6 +212,12 @@ def ensure_worker():
 def index():
     return render_template('index.html')
 
+
+@app.route('/TV')
+@app.route('/tv')
+def tv_login():
+    return render_template('tv.html')
+
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     error = None
@@ -752,6 +758,40 @@ def api_fetch():
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "message": f"Lỗi server: {e}"}), 500
+
+
+@app.route('/api/tv-login', methods=['POST'])
+def api_tv_login():
+    payload = request.form if request.form else request.json
+    room_code = (payload or {}).get('room_code', '').strip()
+    pin_raw = (payload or {}).get('tv_pin', '').strip()
+
+    if not room_code:
+        return jsonify({"success": False, "message": "Vui lòng nhập mã phòng."}), 400
+
+    tv_pin = ''.join(ch for ch in pin_raw if ch.isdigit())
+    if len(tv_pin) != 8:
+        return jsonify({"success": False, "message": "Mã 8 số không hợp lệ."}), 400
+
+    ensure_database()
+
+    _log_activity(
+        customer_id=None,
+        requester_email='',
+        target_email='',
+        kind='tv_login',
+        success=True,
+        message=f"Yêu cầu đăng nhập TV • Phòng: {room_code} • Mã: {tv_pin}",
+    )
+
+    return jsonify(
+        {
+            "success": True,
+            "message": "Đã nhận yêu cầu đăng nhập TV. Hệ thống sẽ xử lý trong giây lát.",
+            "room_code": room_code,
+            "tv_pin": tv_pin,
+        }
+    )
 
 
 

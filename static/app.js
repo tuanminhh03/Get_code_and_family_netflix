@@ -5,8 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const passInput  = document.querySelector('input[name="password"]');
   const btnLogin   = document.getElementById('btnLoginCode');
   const btnVerify  = document.getElementById('btnVerifyLink');
+  const btnTvLogin = document.getElementById('btnTvLogin');
   const resEl      = document.getElementById('result');
   const form       = document.getElementById('fetchForm');
+  const tvForm     = document.getElementById('tvLoginForm');
+  const roomInput  = document.querySelector('input[name="room_code"]');
+  const tvPinInput = document.querySelector('input[name="tv_pin"]');
   const activityModal = document.getElementById('activityModal');
   const activitySubtitle = document.getElementById('activitySubtitle');
   const activityLogs = document.getElementById('activityLogs');
@@ -226,13 +230,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function submitTvLogin(){
+    if (!roomInput || !tvPinInput) return;
+    const roomCode = (roomInput.value || '').trim();
+    const pinRaw = (tvPinInput.value || '').trim();
+
+    if (!roomCode) return showWarn('Vui lòng nhập mã phòng.');
+    const pinDigits = pinRaw.replace(/\D/g, '');
+    if (pinDigits.length !== 8) return showWarn('Mã 8 số chưa hợp lệ.');
+
+    setLoading('Đang gửi yêu cầu đăng nhập TV...');
+
+    try {
+      const resp = await fetch('/api/tv-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_code: roomCode, tv_pin: pinDigits })
+      });
+      const data = await resp.json();
+      if (!data.success) {
+        const m = data.message || 'Không gửi được yêu cầu đăng nhập TV.';
+        return showWarn(m);
+      }
+      showSuccessBlock({ code: pinDigits, link: '', time: '', content: data.message, kind: 'tv_login' });
+    } catch (err) {
+      showError(`Lỗi khi gửi yêu cầu TV: ${err}`);
+    }
+  }
+
   // ensure buttons not submit form
-  [btnLogin, btnVerify].forEach(b => {
+  [btnLogin, btnVerify, btnTvLogin].forEach(b => {
     if (b && !b.getAttribute('type')) b.setAttribute('type', 'button');
   });
 
   btnLogin?.addEventListener('click', () => callAPI('login_code'));
   btnVerify?.addEventListener('click', () => callAPI('verify_link'));
+  btnTvLogin?.addEventListener('click', submitTvLogin);
 
   // === Admin helpers ===
   const bulkDeleteForm = document.getElementById('bulkDeleteForm');

@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Đăng nhập TV</h1>
+<p class="subtle">Nhập mã phòng và mã 8 số để tiếp tục.</p>
+
+<section class="card">
+  <h2>Thông tin đăng nhập</h2>
+  <form id="tvLoginForm" class="form-grid">
+    <label>Mã phòng
+      <input name="room_code" placeholder="VD: PHONG123" required />
+      <small>Mã được hiển thị trên TV.</small>
+    </label>
+
+    <label>Mã 8 số
+      <input name="tv_pin" inputmode="numeric" pattern="\d{8}" maxlength="8" placeholder="________" required />
+      <small>Nhập đủ 8 chữ số liên tục.</small>
+    </label>
+
+    <div class="actions">
+      <button type="button" class="btn-primary" id="btnTvLogin">Đăng nhập TV</button>
+    </div>
+  </form>
+
+  <div id="result" class="result-box"></div>
+</section>
+{% endblock %}
