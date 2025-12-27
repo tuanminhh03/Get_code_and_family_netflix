@@ -431,6 +431,8 @@ label small::before{
 .tag-success{ color:#6ce5b1; }
 .tag-fail{ color:#ff7b7b; }
 
+.status-steps{ margin-top:16px; }
+
 @keyframes pop{
   from{ transform:scale(.96); opacity:0; }
   to{ transform:scale(1); opacity:1; }

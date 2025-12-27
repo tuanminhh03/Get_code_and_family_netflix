@@ -122,6 +122,27 @@
     </form>
   </div>
 
+  <div class="card" style="margin-top:22px;">
+    <div class="card-header">
+      <div>
+        <h2>Đăng nhập TV</h2>
+        <p class="subtle" style="margin:4px 0 0;">Nhập mật khẩu + mã 8 số, theo dõi tiến trình ngay bên dưới.</p>
+      </div>
+    </div>
+    <form id="loginTvForm" class="form-grid">
+      <label>Mật khẩu
+        <input name="tv_password" type="password" placeholder="Nhập mật khẩu" required>
+      </label>
+      <label>Mã TV (8 số)
+        <input name="tv_code" inputmode="numeric" maxlength="8" pattern="\d{8}" placeholder="Nhập mã 8 số" required>
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="btnLoginTv">Đăng nhập TV</button>
+      </div>
+    </form>
+    <div id="loginTvStatus" class="status-steps"></div>
+  </div>
+
   {% with messages = get_flashed_messages(with_categories=True) %}
     {% if messages %}
       <div class="flash-stack">
