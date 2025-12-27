@@ -13,6 +13,7 @@ from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
+import importlib
 import config
 import re
 
@@ -195,6 +196,56 @@ def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     except Exception:
         return value.strftime("%d/%m/%Y %H:%M")
 
+
+def _login_tv(password: str, code: str):
+    password = (password or "").strip()
+    code = (code or "").strip()
+
+    if not password:
+        return {"success": False, "message": "Mật khẩu không được để trống."}
+    if not re.fullmatch(r"\d{8}", code):
+        return {"success": False, "message": "Mã TV phải đủ 8 số."}
+
+    try:
+        backend = importlib.import_module("LOGINTV")
+    except Exception as exc:
+        return {"success": False, "message": "Không tìm thấy backend LOGINTV.", "error": str(exc)}
+
+    func = None
+    for name in ("login_tv", "loginTV", "run", "execute"):
+        candidate = getattr(backend, name, None)
+        if callable(candidate):
+            func = candidate
+            break
+
+    if not func:
+        return {"success": False, "message": "Backend LOGINTV chưa cung cấp hàm đăng nhập TV."}
+
+    try:
+        try:
+            response = func(password=password, code=code)
+        except TypeError:
+            response = func(password, code)
+    except Exception as exc:  # pragma: no cover - bảo vệ backend tùy biến
+        return {"success": False, "message": f"Lỗi khi đăng nhập TV: {exc}"}
+
+    if isinstance(response, dict):
+        success = bool(response.get("success"))
+        message = response.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        return {"success": success, "message": message, "raw": response}
+
+    if isinstance(response, (tuple, list)) and response:
+        success = bool(response[0])
+        message = str(response[1]) if len(response) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        return {"success": success, "message": message, "raw": response}
+
+    success = bool(response)
+    return {
+        "success": success,
+        "message": "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.",
+        "raw": response,
+    }
+
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
 
@@ -373,6 +424,22 @@ def admin():
         recent_activities=recent_activities,
         next_url=next_url,
     )
+
+
+@app.route('/api/login-tv', methods=['POST'])
+def api_login_tv():
+    if not session.get('is_admin'):
+        return jsonify({"success": False, "message": "Chưa đăng nhập admin."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    password = (payload.get('password') or '').strip()
+    code = (payload.get('code') or '').strip()
+
+    result = _login_tv(password=password, code=code)
+    success = bool(result.get("success"))
+    message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+
+    return jsonify({"success": success, "message": message, "raw": result})
 
 
 @app.route('/admin/activity/<int:customer_id>')
