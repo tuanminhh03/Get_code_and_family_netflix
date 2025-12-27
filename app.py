@@ -13,6 +13,7 @@ from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
+from logintv import login_tv
 import config
 import re
 
@@ -373,6 +374,22 @@ def admin():
         recent_activities=recent_activities,
         next_url=next_url,
     )
+
+
+@app.route('/api/login-tv', methods=['POST'])
+def api_login_tv():
+    if not session.get('is_admin'):
+        return jsonify({"success": False, "message": "Chưa đăng nhập admin."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    password = (payload.get('password') or '').strip()
+    code = (payload.get('code') or '').strip()
+
+    result = login_tv(password=password, code=code)
+    success = bool(result.get("success"))
+    message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+
+    return jsonify({"success": success, "message": message, "raw": result})
 
 
 @app.route('/admin/activity/<int:customer_id>')
