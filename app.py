@@ -13,6 +13,7 @@ from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
+import importlib
 import config
 import re
 
@@ -28,6 +29,7 @@ db = SQLAlchemy(app)
 def ensure_database():
     db.create_all()
     _ensure_email_nullable()
+    _ensure_tv_flag()
 
 
 def _ensure_email_nullable():
@@ -73,6 +75,25 @@ def _ensure_email_nullable():
         conn.execute(text("DROP TABLE customers_old"))
 
 
+def _ensure_tv_flag():
+    """Đảm bảo bảng customers có cột can_login_tv (BOOLEAN)."""
+    try:
+        result = db.session.execute(text("PRAGMA table_info(customers)")).fetchall()
+    except Exception:
+        return
+
+    has_flag = any(row[1] == "can_login_tv" for row in result)
+    if has_flag:
+        return
+
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE customers ADD COLUMN can_login_tv BOOLEAN DEFAULT 0"))
+    except Exception:
+        # Nếu ALTER TABLE thất bại (ví dụ do SQLite phiên bản cũ), bỏ qua để không phá app
+        pass
+
+
 def _parse_timestamp_candidates(ts_raw: str):
     if not ts_raw:
         return "", ""
@@ -91,6 +112,7 @@ class Customer(db.Model):
     phone = db.Column(db.String(50))
     expiry_date = db.Column(db.Date)
     notes = db.Column(db.Text)
+    can_login_tv = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -118,6 +140,7 @@ class ActivityLog(db.Model):
         mapping = {
             "login_code": "Mã đăng nhập",
             "verify_link": "Link hộ gia đình",
+            "login_tv": "Đăng nhập TV",
         }
         return mapping.get(self.kind, self.kind or "Khác")
 
@@ -168,6 +191,14 @@ def _normalize_phone(value: str):
     return re.sub(r"\s+", "", (value or "").strip())
 
 
+def _to_bool(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "on", "yes", "y"}
+
+
 def _log_activity(customer_id: int | None, *, requester_email: str, target_email: str, kind: str, success: bool, message: str):
     try:
         entry = ActivityLog(
@@ -195,6 +226,56 @@ def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     except Exception:
         return value.strftime("%d/%m/%Y %H:%M")
 
+
+def _login_tv(password: str, code: str):
+    password = (password or "").strip()
+    code = (code or "").strip()
+
+    if not password:
+        return {"success": False, "message": "Mật khẩu không được để trống."}
+    if not re.fullmatch(r"\d{8}", code):
+        return {"success": False, "message": "Mã TV phải đủ 8 số."}
+
+    try:
+        backend = importlib.import_module("LOGINTV")
+    except Exception as exc:
+        return {"success": False, "message": "Không tìm thấy backend LOGINTV.", "error": str(exc)}
+
+    func = None
+    for name in ("login_tv", "loginTV", "run", "execute"):
+        candidate = getattr(backend, name, None)
+        if callable(candidate):
+            func = candidate
+            break
+
+    if not func:
+        return {"success": False, "message": "Backend LOGINTV chưa cung cấp hàm đăng nhập TV."}
+
+    try:
+        try:
+            response = func(password=password, code=code)
+        except TypeError:
+            response = func(password, code)
+    except Exception as exc:  # pragma: no cover - bảo vệ backend tùy biến
+        return {"success": False, "message": f"Lỗi khi đăng nhập TV: {exc}"}
+
+    if isinstance(response, dict):
+        success = bool(response.get("success"))
+        message = response.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        return {"success": success, "message": message, "raw": response}
+
+    if isinstance(response, (tuple, list)) and response:
+        success = bool(response[0])
+        message = str(response[1]) if len(response) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        return {"success": success, "message": message, "raw": response}
+
+    success = bool(response)
+    return {
+        "success": success,
+        "message": "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.",
+        "raw": response,
+    }
+
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
 
@@ -211,6 +292,11 @@ def ensure_worker():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/login-tv')
+def login_tv_page():
+    return render_template('tv_login.html')
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -290,6 +376,7 @@ def admin():
                     "status_label": meta["label"],
                     "status_badge": meta["badge"],
                     "notes": customer.notes or "",
+                    "can_login_tv": customer.can_login_tv,
                     "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
                     "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
                 }
@@ -310,6 +397,7 @@ def admin():
                 "status_badge": meta["badge"],
                 "row_class": meta["row"],
                 "notes": customer.notes or "",
+                "can_login_tv": customer.can_login_tv,
                 "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
                 "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
                 "days_remaining": days_remaining,
@@ -375,6 +463,46 @@ def admin():
     )
 
 
+@app.route('/api/login-tv', methods=['POST'])
+def api_login_tv():
+    payload = request.get_json(silent=True) or {}
+    email_raw = (payload.get('email') or '').strip()
+    email = _normalize_email(email_raw)
+    password = (payload.get('password') or '').strip()
+    code = (payload.get('code') or '').strip()
+
+    if not email:
+        return jsonify({"success": False, "message": "Vui lòng nhập email được cấp quyền đăng nhập TV."}), 400
+
+    ensure_database()
+
+    customer = Customer.query.filter(func.lower(Customer.email) == email).first()
+    if not customer:
+        return jsonify({"success": False, "message": "Email không tồn tại hoặc chưa được cấp quyền đăng nhập TV."}), 403
+
+    if not customer.can_login_tv:
+        return jsonify({"success": False, "message": "Email chưa được mở quyền đăng nhập TV. Vui lòng liên hệ admin."}), 403
+
+    status = _evaluate_status(customer.expiry_date)
+    if status == 'expired':
+        return jsonify({"success": False, "message": "Gói của bạn đã hết hạn, không thể đăng nhập TV."}), 403
+
+    result = _login_tv(password=password, code=code)
+    success = bool(result.get("success"))
+    message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+
+    _log_activity(
+        customer.id,
+        requester_email=email,
+        target_email=email,
+        kind="login_tv",
+        success=success,
+        message=message,
+    )
+
+    return jsonify({"success": success, "message": message, "raw": result})
+
+
 @app.route('/admin/activity/<int:customer_id>')
 def admin_activity(customer_id: int):
     if not session.get('is_admin'):
@@ -422,6 +550,7 @@ def admin_manage():
         phone = (request.form.get('phone') or '').strip()
         expiry = _parse_date(request.form.get('expiry'))
         notes = (request.form.get('notes') or '').strip()
+        can_login_tv = _to_bool(request.form.get('can_login_tv'))
 
         if not phone:
             flash('Số điện thoại không được để trống.', 'danger')
@@ -438,7 +567,13 @@ def admin_manage():
                 flash('Email đã tồn tại trong hệ thống.', 'danger')
                 return redirect(next_url)
 
-        customer = Customer(email=email or None, phone=phone, expiry_date=expiry, notes=notes)
+        customer = Customer(
+            email=email or None,
+            phone=phone,
+            expiry_date=expiry,
+            notes=notes,
+            can_login_tv=can_login_tv,
+        )
         db.session.add(customer)
         db.session.commit()
         flash('Thêm khách hàng thành công.', 'success')
@@ -461,6 +596,7 @@ def admin_manage():
         phone = (request.form.get('phone') or '').strip()
         expiry = _parse_date(request.form.get('expiry'))
         notes = (request.form.get('notes') or '').strip()
+        can_login_tv = _to_bool(request.form.get('can_login_tv'))
 
         email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
         if email:
@@ -480,6 +616,7 @@ def admin_manage():
         customer.phone = phone
         customer.expiry_date = expiry
         customer.notes = notes
+        customer.can_login_tv = can_login_tv
         try:
             db.session.commit()
             flash('Cập nhật khách hàng thành công.', 'success')

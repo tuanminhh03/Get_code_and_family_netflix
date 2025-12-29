@@ -63,6 +63,12 @@
       <label>Ghi chú
         <input name="notes" placeholder="Gói 90k, khách thân, ưu tiên...">
       </label>
+      <label class="checkbox-line">
+        <input type="hidden" name="can_login_tv" value="0">
+        <input type="checkbox" name="can_login_tv" value="1">
+        <span>Cho phép đăng nhập TV</span>
+        <small>Chỉ email được bật mới truy cập được trang Đăng nhập TV.</small>
+      </label>
       <p class="subtle" style="grid-column:1 / -1; margin:0;">Email có thể thêm qua chức năng Import phía dưới.</p>
       <div class="actions">
         <button type="submit" class="btn-primary">Lưu khách hàng</button>
@@ -214,6 +220,12 @@
                       <label>Ghi chú
                         <input name="notes" value="{{ c.notes }}">
                       </label>
+                      <label class="checkbox-line">
+                        <input type="hidden" name="can_login_tv" value="0">
+                        <input type="checkbox" name="can_login_tv" value="1" {% if c.can_login_tv %}checked{% endif %}>
+                        <span>Cho phép đăng nhập TV</span>
+                        <small>Chỉ email được bật mới truy cập được trang Đăng nhập TV.</small>
+                      </label>
                       <div class="actions">
                         <button type="submit" class="btn-primary">Cập nhật</button>
                       </div>
@@ -258,6 +270,7 @@
               <th>Số điện thoại</th>
               <th>Hạn sử dụng</th>
               <th>Trạng thái</th>
+              <th>Đăng nhập TV</th>
               <th>Ghi chú</th>
               <th>Đăng ký</th>
               <th>Cập nhật</th>
@@ -272,6 +285,13 @@
                   <td class="mono phone-cell">{{ e.phone or '—' }}</td>
                   <td>{{ e.expiry_display }}</td>
                   <td><span class="status-pill {{ e.status_badge }}">{{ e.status_label }}</span></td>
+                  <td>
+                    {% if e.can_login_tv %}
+                      <span class="tag-success">Đã bật</span>
+                    {% else %}
+                      <span class="tag-fail">Tắt</span>
+                    {% endif %}
+                  </td>
                   <td>{{ e.notes or '—' }}</td>
                   <td>{{ e.created_at }}</td>
                   <td>{{ e.updated_at }}</td>

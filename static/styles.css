@@ -72,6 +72,21 @@ h1{
 }
 label{ display:block; }
 label > small{ display:block; margin-top:6px; color:var(--muted); }
+.checkbox-line{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+}
+.checkbox-line input[type="checkbox"]{
+  width:auto;
+  margin-top:6px;
+}
+.checkbox-line span{
+  font-weight:600;
+}
+.checkbox-line small{
+  margin-top:2px;
+}
 
 input{
   width:100%;
@@ -430,6 +445,8 @@ label small::before{
 .activity-meta{ color:var(--muted); font-size:13px; display:flex; gap:10px; flex-wrap:wrap; }
 .tag-success{ color:#6ce5b1; }
 .tag-fail{ color:#ff7b7b; }
+
+.status-steps{ margin-top:16px; }
 
 @keyframes pop{
   from{ transform:scale(.96); opacity:0; }

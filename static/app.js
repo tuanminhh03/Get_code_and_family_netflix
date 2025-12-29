@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnVerify  = document.getElementById('btnVerifyLink');
   const resEl      = document.getElementById('result');
   const form       = document.getElementById('fetchForm');
+  const tvLoginForm = document.getElementById('tvLoginForm');
+  const tvLoginStatus = document.getElementById('tvLoginStatus');
+  const btnLoginTv = document.getElementById('btnLoginTv');
   const activityModal = document.getElementById('activityModal');
   const activitySubtitle = document.getElementById('activitySubtitle');
   const activityLogs = document.getElementById('activityLogs');
@@ -346,4 +349,67 @@ document.addEventListener('DOMContentLoaded', () => {
     span.setAttribute('role', 'button');
     span.setAttribute('aria-label', 'Nhấp để sao chép email');
   });
+
+  // === Login TV (public page) ===
+  if (tvLoginForm && tvLoginStatus) {
+    const setStep = (message, state = 'info') => {
+      const cls = {
+        info: 'alert info',
+        success: 'alert success',
+        warn: 'alert warn',
+        danger: 'alert danger',
+      }[state] || 'alert info';
+      tvLoginStatus.innerHTML = `<div class="${cls}">${message}</div>`;
+    };
+
+    const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
+
+    tvLoginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = tvLoginForm.querySelector('input[name="tv_email"]').value.trim();
+      const password = tvLoginForm.querySelector('input[name="tv_password"]').value.trim();
+      const code = tvLoginForm.querySelector('input[name="tv_code"]').value.trim();
+
+      if (!email) {
+        setStep('Vui lòng nhập email được cấp quyền.', 'warn');
+        return;
+      }
+      if (!password) {
+        setStep('Vui lòng nhập mật khẩu.', 'warn');
+        return;
+      }
+      if (!validateCode(code)) {
+        setStep('Mã TV phải đủ 8 số.', 'warn');
+        return;
+      }
+
+      setStep('1) Đang login tài khoản...', 'info');
+      btnLoginTv?.setAttribute('disabled', 'disabled');
+
+      try {
+        const resp = await fetch('/api/login-tv', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, code })
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || data?.success === false) {
+          setStep(data?.message || 'Mã sai, vui lòng nhập lại.', 'danger');
+          return;
+        }
+
+        setStep('2) Login thành công. Đang đăng nhập TV...', 'info');
+        setTimeout(() => {
+          const msg = data?.message || 'Đăng nhập thành công.';
+          const state = data?.success ? 'success' : 'warn';
+          setStep(`3) ${msg}`, state);
+        }, 400);
+      } catch (err) {
+        setStep('Lỗi khi gọi API đăng nhập TV.', 'danger');
+      } finally {
+        btnLoginTv?.removeAttribute('disabled');
+      }
+    });
+  }
 });

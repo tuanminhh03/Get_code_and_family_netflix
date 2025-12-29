@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h1>Đăng nhập TV</h1>
+<p class="subtle">Nhập email được cấp quyền, mật khẩu và mã TV 8 số để tiến hành.</p>
+
+<section class="card">
+  <h2>Thông tin đăng nhập TV</h2>
+  <form id="tvLoginForm" class="form-grid">
+    <label>Email được cấp quyền
+      <input name="tv_email" type="email" placeholder="email@example.com" required>
+    </label>
+    <label>Mật khẩu
+      <input name="tv_password" type="password" placeholder="Nhập mật khẩu" required>
+    </label>
+    <label>Mã TV (8 số)
+      <input name="tv_code" inputmode="numeric" maxlength="8" pattern="\d{8}" placeholder="Nhập mã 8 số" required>
+    </label>
+    <div class="actions">
+      <button type="submit" class="btn-primary" id="btnLoginTv">Đăng nhập TV</button>
+    </div>
+  </form>
+  <div id="tvLoginStatus" class="status-steps"></div>
+</section>
+
+{% endblock %}
