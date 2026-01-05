@@ -33,8 +33,9 @@ MAX_RETRIES = 3
 MAX_CONCURRENT_PROCESSES = 2 
 # ------------------------------------------------
 
+
 def _get_tv_password():
-    """Lấy mật khẩu TV riêng (nếu đặt), bỏ mặc định ADMIN để tránh chặn nhầm."""
+    """Lấy mật khẩu TV riêng (nếu đặt). Không fallback ADMIN để tránh chặn nhầm."""
     return os.getenv("TV_PASSWORD") or getattr(config, "TV_PASSWORD", "") or ""
 
 def _resolve_email(email: str | None):
