@@ -95,6 +95,7 @@ class TukiPersistent:
         opts.add_argument("--disable-dev-shm-usage")
         opts.add_argument("--disable-extensions")
         opts.add_argument("--disable-blink-features=AutomationControlled")
+
         opts.add_experimental_option("excludeSwitches", ["enable-automation"])
         opts.add_experimental_option("useAutomationExtension", False)
         opts.add_argument("--log-level=3")
