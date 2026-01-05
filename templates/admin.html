@@ -129,6 +129,60 @@
   <div class="card" style="margin-top:22px;">
     <div class="card-header">
       <div>
+        <h2>Email đăng nhập TV</h2>
+        <p class="subtle" style="margin:4px 0 0;">Danh sách email được xoay vòng, không lặp lại cho đến khi đã dùng hết.</p>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('admin_tv_emails') }}" class="form-grid">
+      <input type="hidden" name="action" value="add">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label>Email đăng nhập TV
+        <input name="email" type="email" placeholder="email@domain.com" required>
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn-secondary">Thêm email</button>
+      </div>
+    </form>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Lần cuối sử dụng</th>
+            <th>Ngày thêm</th>
+            <th>Hành động</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if tv_emails %}
+            {% for item in tv_emails %}
+              <tr>
+                <td class="mono email-cell">{{ item.email }}</td>
+                <td>{{ item.last_used }}</td>
+                <td>{{ item.created_at }}</td>
+                <td class="actions-cell">
+                  <form method="post" action="{{ url_for('admin_tv_emails') }}" onsubmit="return confirm('Xóa email này khỏi danh sách đăng nhập TV?');">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="email_id" value="{{ item.id }}">
+                    <input type="hidden" name="next" value="{{ next_url }}">
+                    <button type="submit" class="btn-secondary">Xóa</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="4" style="text-align:center; color:var(--muted); padding:18px 0;">Chưa có email nào trong danh sách.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:22px;">
+    <div class="card-header">
+      <div>
         <h2>Đăng nhập TV</h2>
         <p class="subtle" style="margin:4px 0 0;">Nhập mật khẩu + mã 8 số, theo dõi tiến trình ngay bên dưới.</p>
       </div>
