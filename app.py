@@ -29,6 +29,7 @@ db = SQLAlchemy(app)
 def ensure_database():
     db.create_all()
     _ensure_email_nullable()
+    _ensure_tv_allowed_column()
 
 
 def _ensure_email_nullable():
@@ -55,6 +56,7 @@ def _ensure_email_nullable():
                     email VARCHAR(255),
                     phone VARCHAR(50),
                     expiry_date DATE,
+                    tv_allowed BOOLEAN DEFAULT 0,
                     notes TEXT,
                     created_at DATETIME,
                     updated_at DATETIME
@@ -66,12 +68,29 @@ def _ensure_email_nullable():
         conn.execute(
             text(
                 """
-                INSERT INTO customers (id, email, phone, expiry_date, notes, created_at, updated_at)
-                SELECT id, email, phone, expiry_date, notes, created_at, updated_at FROM customers_old
+                INSERT INTO customers (id, email, phone, expiry_date, tv_allowed, notes, created_at, updated_at)
+                SELECT id, email, phone, expiry_date, 0 AS tv_allowed, notes, created_at, updated_at FROM customers_old
                 """
             )
         )
         conn.execute(text("DROP TABLE customers_old"))
+
+
+def _ensure_tv_allowed_column():
+    try:
+        result = db.session.execute(text("PRAGMA table_info(customers)")).fetchall()
+    except Exception:
+        return
+
+    has_column = any(row[1] == "tv_allowed" for row in result)
+    if has_column:
+        return
+
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE customers ADD COLUMN tv_allowed BOOLEAN DEFAULT 0"))
+    except Exception:
+        print("[DB] Không thể thêm cột tv_allowed", flush=True)
 
 
 def _parse_timestamp_candidates(ts_raw: str):
@@ -91,6 +110,7 @@ class Customer(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=True)
     phone = db.Column(db.String(50))
     expiry_date = db.Column(db.Date)
+    tv_allowed = db.Column(db.Boolean, default=False)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(
@@ -119,6 +139,7 @@ class ActivityLog(db.Model):
         mapping = {
             "login_code": "Mã đăng nhập",
             "verify_link": "Link hộ gia đình",
+            "login_tv": "Đăng nhập TV",
         }
         return mapping.get(self.kind, self.kind or "Khác")
 
@@ -263,6 +284,13 @@ def ensure_worker():
 def index():
     return render_template('index.html')
 
+
+@app.route('/tv')
+def tv_page():
+    ensure_database()
+    return render_template('tv.html')
+
+
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     error = None
@@ -340,6 +368,7 @@ def admin():
                     "expiry_display": customer.expiry_display,
                     "status_label": meta["label"],
                     "status_badge": meta["badge"],
+                    "tv_allowed": bool(customer.tv_allowed),
                     "notes": customer.notes or "",
                     "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
                     "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
@@ -360,6 +389,7 @@ def admin():
                 "status_label": meta["label"],
                 "status_badge": meta["badge"],
                 "row_class": meta["row"],
+                "tv_allowed": bool(customer.tv_allowed),
                 "notes": customer.notes or "",
                 "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
                 "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
@@ -442,6 +472,52 @@ def api_login_tv():
     return jsonify({"success": success, "message": message, "raw": result})
 
 
+@app.route('/api/tv-login', methods=['POST'])
+def api_tv_login():
+    ensure_database()
+
+    payload = request.get_json(silent=True) or {}
+    email = _normalize_email(payload.get('email'))
+    password = (payload.get('password') or '').strip()
+    code = (payload.get('code') or '').strip()
+
+    if not email:
+        return jsonify({"success": False, "message": "Vui lòng nhập email."}), 400
+    if not password:
+        return jsonify({"success": False, "message": "Vui lòng nhập mật khẩu."}), 400
+    if not re.fullmatch(r"\d{8}", code):
+        return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
+
+    customer = Customer.query.filter(func.lower(Customer.email) == email).first()
+    if not customer:
+        return jsonify({"success": False, "message": "Email chưa được cấp quyền đăng nhập TV."}), 403
+    if not customer.tv_allowed:
+        return jsonify({"success": False, "message": "Email này không được phép đăng nhập TV."}), 403
+
+    status = _evaluate_status(customer.expiry_date)
+    if status == 'expired':
+        return jsonify({"success": False, "message": "Gói đã hết hạn, vui lòng liên hệ admin để gia hạn."}), 403
+
+    result = _login_tv(password=password, code=code)
+    if isinstance(result, dict):
+        success = bool(result.get("success"))
+        message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+    else:
+        success = bool(result)
+        message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
+
+    _log_activity(
+        customer.id,
+        requester_email=email,
+        target_email=email,
+        kind="login_tv",
+        success=success,
+        message=message,
+    )
+
+    return jsonify({"success": success, "message": message, "raw": result}), (200 if success else 400)
+
+
 @app.route('/admin/activity/<int:customer_id>')
 def admin_activity(customer_id: int):
     if not session.get('is_admin'):
@@ -488,6 +564,7 @@ def admin_manage():
         email = _normalize_email(email_raw)
         phone = (request.form.get('phone') or '').strip()
         expiry = _parse_date(request.form.get('expiry'))
+        tv_allowed = bool(request.form.get('tv_allowed'))
         notes = (request.form.get('notes') or '').strip()
 
         if not phone:
@@ -505,7 +582,13 @@ def admin_manage():
                 flash('Email đã tồn tại trong hệ thống.', 'danger')
                 return redirect(next_url)
 
-        customer = Customer(email=email or None, phone=phone, expiry_date=expiry, notes=notes)
+        customer = Customer(
+            email=email or None,
+            phone=phone,
+            expiry_date=expiry,
+            tv_allowed=tv_allowed,
+            notes=notes,
+        )
         db.session.add(customer)
         db.session.commit()
         flash('Thêm khách hàng thành công.', 'success')
@@ -527,6 +610,7 @@ def admin_manage():
         email = _normalize_email(email_raw)
         phone = (request.form.get('phone') or '').strip()
         expiry = _parse_date(request.form.get('expiry'))
+        tv_allowed = bool(request.form.get('tv_allowed'))
         notes = (request.form.get('notes') or '').strip()
 
         email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
@@ -546,6 +630,7 @@ def admin_manage():
         customer.email = email or None
         customer.phone = phone
         customer.expiry_date = expiry
+        customer.tv_allowed = tv_allowed
         customer.notes = notes
         try:
             db.session.commit()
