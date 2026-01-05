@@ -94,12 +94,12 @@ def enter_tv_code(driver, wait, tv_code):
     try:
         print(" -> Đang truy cập trang nhập mã TV8...")
         driver.get("https://www.netflix.com/tv8")
-        
+
         # Đảm bảo mã là chuỗi và đủ 8 ký tự
         code_str = str(tv_code).strip()
         if len(code_str) != 8:
             print(f"LỖI: Mã TV phải có đúng 8 số. Mã hiện tại: {code_str}")
-            return False
+            return False, "Mã TV phải có đúng 8 số."
 
         # Vòng lặp điền từng số vào 8 ô input riêng biệt
         for i in range(8):
@@ -117,19 +117,36 @@ def enter_tv_code(driver, wait, tv_code):
         # Nút này ban đầu disabled, cần đợi nó enable hoặc click được
         submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='witcher-code-submit']")))
         safe_click(driver, submit_btn)
-        
+
         # Chờ kiểm tra URL Success
         try:
             wait.until(EC.url_contains("/tv/out/success"))
             print(" -> ✅ KẾT QUẢ: ĐĂNG NHẬP TV THÀNH CÔNG (Url success)")
-            return True
+            return True, "Đăng nhập TV thành công."
         except TimeoutException:
-            print(" -> ❌ KẾT QUẢ: KHÔNG THẤY TRANG SUCCESS (Có thể sai mã hoặc lỗi hệ thống)")
-            return False
+            short_wait = WebDriverWait(driver, 5)
+            msg_text = "Không thể đăng nhập TV."
+            try:
+                error_el = short_wait.until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, "div.nf-message-contents[data-uia='UIMessage-content']")
+                    )
+                )
+                raw_text = (error_el.text or "").strip()
+                if raw_text:
+                    print(f" -> Thông báo lỗi trên trang TV: {raw_text}")
+                    lowered = raw_text.lower()
+                    if "không đúng" in lowered or "nhập sai" in lowered:
+                        msg_text = "Mã bạn nhập sai vui lòng nhập lại."
+                    else:
+                        msg_text = raw_text
+            except TimeoutException:
+                print(" -> ❌ KẾT QUẢ: KHÔNG THẤY TRANG SUCCESS (Có thể sai mã hoặc lỗi hệ thống)")
+            return False, msg_text
 
     except Exception as e:
         print(f" -> Lỗi khi nhập mã TV: {e}")
-        return False
+        return False, "Không thể đăng nhập TV."
 
 def worker_process(email):
     return _login_once(email=email, tv_code=TV_CODE_TO_ENTER)
@@ -194,8 +211,8 @@ def _login_once(email: str, tv_code: str):
         # --- BƯỚC 4: NẾU WEB OK -> CHUYỂN QUA NHẬP MÃ TV ---
         if login_web_success:
             driver.switch_to.window(netflix_handle)
-            tv_success = enter_tv_code(driver, wait, tv_code)
-            return {"success": tv_success, "message": "Đăng nhập TV thành công." if tv_success else "Không thể đăng nhập TV.", "email": email}
+            tv_success, tv_message = enter_tv_code(driver, wait, tv_code)
+            return {"success": tv_success, "message": tv_message, "email": email}
 
         return {"success": False, "message": "Không qua được bước đăng nhập Web.", "email": email}
 
