@@ -1,3 +1,5 @@
+import os
+import re
 import time
 import random 
 from selenium import webdriver
@@ -9,6 +11,8 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from multiprocessing import Pool
+
+import config
 
 # ----------------- CẤU HÌNH -----------------
 INPUT_EMAILS = [
@@ -28,6 +32,18 @@ CTV_CODES = [
 MAX_RETRIES = 3             
 MAX_CONCURRENT_PROCESSES = 2 
 # ------------------------------------------------
+
+def _get_tv_password():
+    return os.getenv("TV_PASSWORD") or getattr(config, "ADMIN_PASSWORD", "")
+
+def _resolve_email(email: str | None):
+    if email and email.strip():
+        return email.strip()
+    for item in INPUT_EMAILS:
+        candidate = (item or "").strip()
+        if candidate:
+            return candidate
+    return None
 
 def safe_click(driver, element):
     try:
@@ -114,6 +130,10 @@ def enter_tv_code(driver, wait, tv_code):
         return False
 
 def worker_process(email):
+    return _login_once(email=email, tv_code=TV_CODE_TO_ENTER)
+
+
+def _login_once(email: str, tv_code: str):
     chrome_options = Options()
     chrome_options.add_experimental_option("detach", True) 
     chrome_options.add_argument("--no-sandbox")
@@ -171,15 +191,39 @@ def worker_process(email):
 
         # --- BƯỚC 4: NẾU WEB OK -> CHUYỂN QUA NHẬP MÃ TV ---
         if login_web_success:
-            # Chuyển về tab Netflix
             driver.switch_to.window(netflix_handle)
-            # Gọi hàm xử lý TV8
-            enter_tv_code(driver, wait, TV_CODE_TO_ENTER)
-        else:
-            print(f"[{email}] -> Không qua được bước đăng nhập Web. Dừng.")
+            tv_success = enter_tv_code(driver, wait, tv_code)
+            return {"success": tv_success, "message": "Đăng nhập TV thành công." if tv_success else "Không thể đăng nhập TV.", "email": email}
+
+        return {"success": False, "message": "Không qua được bước đăng nhập Web.", "email": email}
 
     except Exception as e:
-        print(f"Lỗi với {email}: {e}")
+        return {"success": False, "message": f"Lỗi với {email}: {e}", "email": email}
+
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+
+def login_tv(password: str, code: str, email: str | None = None):
+    expected_password = _get_tv_password()
+    if expected_password and password != expected_password:
+        return {"success": False, "message": "Sai mật khẩu đăng nhập TV."}
+
+    if not re.fullmatch(r"\d{8}", code or ""):
+        return {"success": False, "message": "Mã TV phải đủ 8 số."}
+
+    target_email = _resolve_email(email)
+    if not target_email:
+        return {"success": False, "message": "Không có email nào để đăng nhập TV."}
+
+    result = _login_once(email=target_email, tv_code=code)
+    if isinstance(result, dict):
+        return result
+
+    return {"success": bool(result), "message": "Đăng nhập TV thành công." if result else "Không thể đăng nhập TV.", "email": target_email}
 
 if __name__ == "__main__":
     tasks = [e.strip() for e in INPUT_EMAILS if e.strip()]
