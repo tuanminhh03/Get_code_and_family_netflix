@@ -223,9 +223,69 @@ def _log_activity(customer_id: int | None, *, requester_email: str, target_email
         print("[ActivityLog] Không thể lưu nhật ký", flush=True)
 
 
+def _load_seed_emails():
+    seed_path = os.path.join(os.getcwd(), "account.txt")
+    if not os.path.exists(seed_path):
+        return []
+    try:
+        with open(seed_path, encoding="utf-8") as f:
+            return [line.strip() for line in f.readlines() if line.strip()]
+    except Exception:  # pragma: no cover - best-effort seed
+        return []
+
+
+def _ensure_seed_tv_account():
+    """Đảm bảo luôn có ít nhất một email TV trong DB.
+
+    - Ưu tiên các email đã tồn tại, chỉ bật tv_allowed nếu cần.
+    - Nếu DB chưa có email, seed từ account.txt (dòng đầu tiên hợp lệ).
+    """
+    ensure_database()
+
+    existing = (
+        Customer.query.filter(
+            Customer.email.isnot(None),
+            Customer.email != "",
+        )
+        .order_by(Customer.id.asc())
+        .first()
+    )
+
+    if existing and existing.tv_allowed:
+        return existing
+
+    if existing and not existing.tv_allowed:
+        existing.tv_allowed = True
+        db.session.commit()
+        return existing
+
+    # Seed mới từ account.txt
+    seed_emails = _load_seed_emails()
+    for raw in seed_emails:
+        email = _normalize_email(raw)
+        if not email:
+            continue
+
+        existing_email = Customer.query.filter(func.lower(Customer.email) == email).first()
+        if existing_email:
+            if not existing_email.tv_allowed:
+                existing_email.tv_allowed = True
+                db.session.commit()
+            return existing_email
+
+        customer = Customer(email=email, tv_allowed=True)
+        db.session.add(customer)
+        db.session.commit()
+        return customer
+
+    return None
+
+
 def _pick_tv_customer(today: date | None = None):
     today = today or date.today()
-    return (
+
+    # Ưu tiên account được bật tv_allowed + còn hạn
+    chosen = (
         Customer.query.filter(
             Customer.tv_allowed.is_(True),
             Customer.email.isnot(None),
@@ -235,6 +295,20 @@ def _pick_tv_customer(today: date | None = None):
         .order_by(func.random())
         .first()
     )
+    if chosen:
+        return chosen
+
+    # Fallback: chọn bất kỳ email hợp lệ còn hạn (dù tv_allowed=False)
+    return (
+        Customer.query.filter(
+            Customer.email.isnot(None),
+            Customer.email != "",
+            or_(Customer.expiry_date.is_(None), Customer.expiry_date >= today),
+        )
+        .order_by(func.random())
+        .first()
+    )
+
 
 
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
@@ -321,6 +395,7 @@ def index():
 @app.route('/tv')
 def tv_page():
     ensure_database()
+    _ensure_seed_tv_account()
     return render_template('tv.html')
 
 
@@ -505,9 +580,12 @@ def api_login_tv():
     return jsonify({"success": success, "message": message, "raw": result})
 
 
+
 @app.route('/api/tv-login', methods=['POST'])
 def api_tv_login():
     ensure_database()
+    _ensure_seed_tv_account()
+
 
     payload = request.get_json(silent=True) or {}
     password = (payload.get('password') or '').strip()
@@ -521,6 +599,7 @@ def api_tv_login():
     customer = _pick_tv_customer()
     if not customer:
         return jsonify({"success": False, "message": "Hiện chưa có email nào được cấp quyền đăng nhập TV."}), 503
+
 
     status = _evaluate_status(customer.expiry_date)
     if status == 'expired':
@@ -579,7 +658,8 @@ def admin_activity(customer_id: int):
     return jsonify({"success": True, "logs": payload})
 
 
-@app.route('/admin/manage', methods=['POST'])
+
+  ('/admin/manage', methods=['POST'])
 def admin_manage():
     if not session.get('is_admin'):
         flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
