@@ -223,6 +223,20 @@ def _log_activity(customer_id: int | None, *, requester_email: str, target_email
         print("[ActivityLog] Không thể lưu nhật ký", flush=True)
 
 
+def _pick_tv_customer(today: date | None = None):
+    today = today or date.today()
+    return (
+        Customer.query.filter(
+            Customer.tv_allowed.is_(True),
+            Customer.email.isnot(None),
+            Customer.email != "",
+            or_(Customer.expiry_date.is_(None), Customer.expiry_date >= today),
+        )
+        .order_by(func.random())
+        .first()
+    )
+
+
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     if not value:
         return ""
@@ -496,22 +510,17 @@ def api_tv_login():
     ensure_database()
 
     payload = request.get_json(silent=True) or {}
-    email = _normalize_email(payload.get('email'))
     password = (payload.get('password') or '').strip()
     code = (payload.get('code') or '').strip()
 
-    if not email:
-        return jsonify({"success": False, "message": "Vui lòng nhập email."}), 400
     if not password:
-        return jsonify({"success": False, "message": "Vui lòng nhập mật khẩu."}), 400
+        return jsonify({"success": False, "message": "Vui lòng nhập mật khẩu đăng nhập TV."}), 400
     if not re.fullmatch(r"\d{8}", code):
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
-    customer = Customer.query.filter(func.lower(Customer.email) == email).first()
+    customer = _pick_tv_customer()
     if not customer:
-        return jsonify({"success": False, "message": "Email chưa được cấp quyền đăng nhập TV."}), 403
-    if not customer.tv_allowed:
-        return jsonify({"success": False, "message": "Email này không được phép đăng nhập TV."}), 403
+        return jsonify({"success": False, "message": "Hiện chưa có email nào được cấp quyền đăng nhập TV."}), 503
 
     status = _evaluate_status(customer.expiry_date)
     if status == 'expired':
@@ -525,16 +534,19 @@ def api_tv_login():
         success = bool(result)
         message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
 
+    if success:
+        message = f"Đăng nhập thành công bằng email {customer.email}."
+
     _log_activity(
         customer.id,
-        requester_email=email,
-        target_email=email,
+        requester_email="auto",
+        target_email=customer.email,
         kind="login_tv",
         success=success,
         message=message,
     )
 
-    return jsonify({"success": success, "message": message, "raw": result}), (200 if success else 400)
+    return jsonify({"success": success, "message": message, "email": customer.email, "raw": result}), (200 if success else 400)
 
 
 @app.route('/admin/activity/<int:customer_id>')
@@ -947,7 +959,7 @@ if __name__ == '__main__':
             print('✅ DB created/ready')
         # ❌ KHÔNG gọi ensure_worker() ở đây
     else:
-        warmup = str(os.getenv("TUKI_WARMUP", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
+        warmup = str(os.getenv("TUKI_WARMUP", "1")).strip().lower() in {"1", "true", "yes", "y", "on"}
         if warmup:
             try:
                 ensure_worker()  # ✅ Chỉ warm-up khi chạy server thật (khi bật TUKI_WARMUP)

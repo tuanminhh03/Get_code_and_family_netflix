@@ -370,14 +370,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     tvLoginPageForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = tvLoginPageForm.querySelector('input[name="tv_email"]').value.trim();
       const password = tvLoginPageForm.querySelector('input[name="tv_password"]').value.trim();
       const code = tvLoginPageForm.querySelector('input[name="tv_code"]').value.trim();
 
-      if (!email) {
-        setTvStatus('Vui lòng nhập email.', 'warn');
-        return;
-      }
       if (!password) {
         setTvStatus('Vui lòng nhập mật khẩu.', 'warn');
         return;
@@ -394,12 +389,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const resp = await fetch('/api/tv-login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, code })
+          body: JSON.stringify({ password, code })
         });
         const data = await resp.json();
         const ok = resp.ok && data?.success;
         const msg = data?.message || (ok ? 'Đăng nhập thành công.' : 'Không thể đăng nhập TV.');
-        setTvStatus(msg, ok ? 'success' : 'warn');
+        const chosenEmail = data?.email;
+        const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
+        setTvStatus(detail, ok ? 'success' : 'warn');
       } catch (err) {
         setTvStatus('Lỗi khi gọi API đăng nhập TV.', 'danger');
       } finally {
