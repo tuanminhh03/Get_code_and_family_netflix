@@ -33,8 +33,10 @@ MAX_RETRIES = 3
 MAX_CONCURRENT_PROCESSES = 2 
 # ------------------------------------------------
 
+
 def _get_tv_password():
-    return os.getenv("TV_PASSWORD") or getattr(config, "ADMIN_PASSWORD", "")
+    """Lấy mật khẩu TV riêng (nếu đặt). Không fallback ADMIN để tránh chặn nhầm."""
+    return os.getenv("TV_PASSWORD") or getattr(config, "TV_PASSWORD", "") or ""
 
 def _resolve_email(email: str | None):
     if email and email.strip():
