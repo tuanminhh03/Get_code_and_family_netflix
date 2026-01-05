@@ -13,10 +13,10 @@ from sqlalchemy import func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
-import importlib
 import config
 import os
 import re
+from logintv import login_tv as run_login_tv
 
 # Flask init
 app = Flask(__name__)
@@ -326,52 +326,31 @@ def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
 
 
 def _login_tv(password: str, code: str):
-    password = (password or "").strip()
-    code = (code or "").strip()
+    """Ủy quyền sang module logintv để dùng chung fallback/validation."""
 
-    if not password:
-        return {"success": False, "message": "Mật khẩu không được để trống."}
-    if not re.fullmatch(r"\d{8}", code):
-        return {"success": False, "message": "Mã TV phải đủ 8 số."}
+    result = run_login_tv(password=password, code=code)
 
-    try:
-        backend = importlib.import_module("LOGINTV")
-    except Exception as exc:
-        return {"success": False, "message": "Không tìm thấy backend LOGINTV.", "error": str(exc)}
+    # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
+    if isinstance(result, dict):
+        success = bool(result.get("success"))
+        message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        normalized = {"success": success, "message": message, "raw": result.get("raw")}
+        # Giữ lại bất kỳ thông tin phụ khác từ backend
+        for key, value in result.items():
+            if key not in normalized:
+                normalized[key] = value
+        return normalized
 
-    func = None
-    for name in ("login_tv", "loginTV", "run", "execute"):
-        candidate = getattr(backend, name, None)
-        if callable(candidate):
-            func = candidate
-            break
+    if isinstance(result, (tuple, list)) and result:
+        success = bool(result[0])
+        message = str(result[1]) if len(result) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        return {"success": success, "message": message, "raw": result}
 
-    if not func:
-        return {"success": False, "message": "Backend LOGINTV chưa cung cấp hàm đăng nhập TV."}
-
-    try:
-        try:
-            response = func(password=password, code=code)
-        except TypeError:
-            response = func(password, code)
-    except Exception as exc:  # pragma: no cover - bảo vệ backend tùy biến
-        return {"success": False, "message": f"Lỗi khi đăng nhập TV: {exc}"}
-
-    if isinstance(response, dict):
-        success = bool(response.get("success"))
-        message = response.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        return {"success": success, "message": message, "raw": response}
-
-    if isinstance(response, (tuple, list)) and response:
-        success = bool(response[0])
-        message = str(response[1]) if len(response) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        return {"success": success, "message": message, "raw": response}
-
-    success = bool(response)
+    success = bool(result)
     return {
         "success": success,
         "message": "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.",
-        "raw": response,
+        "raw": result,
     }
 
 # === WORKER (KEEP CHROME ALIVE) ===
