@@ -325,10 +325,10 @@ def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
         return value.strftime("%d/%m/%Y %H:%M")
 
 
-def _login_tv(password: str, code: str):
+def _login_tv(password: str, code: str, email: str | None = None):
     """Ủy quyền sang module logintv để dùng chung fallback/validation."""
 
-    result = run_login_tv(password=password, code=code)
+    result = run_login_tv(password=password, code=code, email=email)
 
     # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
     if isinstance(result, dict):
@@ -584,7 +584,7 @@ def api_tv_login():
     if status == 'expired':
         return jsonify({"success": False, "message": "Gói đã hết hạn, vui lòng liên hệ admin để gia hạn."}), 403
 
-    result = _login_tv(password=password, code=code)
+    result = _login_tv(password=password, code=code, email=customer.email)
     if isinstance(result, dict):
         success = bool(result.get("success"))
         message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
