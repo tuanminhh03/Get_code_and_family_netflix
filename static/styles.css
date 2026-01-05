@@ -72,6 +72,17 @@ h1{
 }
 label{ display:block; }
 label > small{ display:block; margin-top:6px; color:var(--muted); }
+.checkbox-line{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  font-weight:600;
+}
+.checkbox-line input[type="checkbox"]{
+  width:auto;
+  margin-top:0;
+  accent-color: var(--primary);
+}
 
 input{
   width:100%;

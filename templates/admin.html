@@ -63,6 +63,10 @@
       <label>Ghi chú
         <input name="notes" placeholder="Gói 90k, khách thân, ưu tiên...">
       </label>
+      <label class="checkbox-line">
+        <input type="checkbox" name="tv_allowed">
+        <span>Cho phép đăng nhập TV</span>
+      </label>
       <p class="subtle" style="grid-column:1 / -1; margin:0;">Email có thể thêm qua chức năng Import phía dưới.</p>
       <div class="actions">
         <button type="submit" class="btn-primary">Lưu khách hàng</button>
@@ -179,6 +183,7 @@
             <th>Email liên kết</th>
             <th>Hạn sử dụng</th>
             <th>Trạng thái</th>
+            <th>TV</th>
             <th>Ghi chú</th>
             <th>Đăng ký</th>
             <th>Cập nhật</th>
@@ -213,6 +218,13 @@
                     <div class="pill-meta">{{ c.days_remaining }} ngày còn lại</div>
                   {% endif %}
                 </td>
+                <td>
+                  {% if c.tv_allowed %}
+                    <span class="status-pill status-pill-active">Được phép</span>
+                  {% else %}
+                    <span class="status-pill status-pill-expired">Chặn</span>
+                  {% endif %}
+                </td>
                 <td>{{ c.notes or '—' }}</td>
                 <td>{{ c.created_at }}</td>
                 <td>{{ c.updated_at }}</td>
@@ -235,6 +247,10 @@
                       <label>Ghi chú
                         <input name="notes" value="{{ c.notes }}">
                       </label>
+                      <label class="checkbox-line">
+                        <input type="checkbox" name="tv_allowed" {% if c.tv_allowed %}checked{% endif %}>
+                        <span>Cho phép đăng nhập TV</span>
+                      </label>
                       <div class="actions">
                         <button type="submit" class="btn-primary">Cập nhật</button>
                       </div>
@@ -251,7 +267,7 @@
             {% endfor %}
           {% else %}
               <tr>
-                <td colspan="8" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có khách hàng nào phù hợp.</td>
+                <td colspan="9" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có khách hàng nào phù hợp.</td>
               </tr>
           {% endif %}
         </tbody>
@@ -279,6 +295,7 @@
               <th>Số điện thoại</th>
               <th>Hạn sử dụng</th>
               <th>Trạng thái</th>
+              <th>TV</th>
               <th>Ghi chú</th>
               <th>Đăng ký</th>
               <th>Cập nhật</th>
@@ -293,6 +310,13 @@
                   <td class="mono phone-cell">{{ e.phone or '—' }}</td>
                   <td>{{ e.expiry_display }}</td>
                   <td><span class="status-pill {{ e.status_badge }}">{{ e.status_label }}</span></td>
+                  <td>
+                    {% if e.tv_allowed %}
+                      <span class="status-pill status-pill-active">Được phép</span>
+                    {% else %}
+                      <span class="status-pill status-pill-expired">Chặn</span>
+                    {% endif %}
+                  </td>
                   <td>{{ e.notes or '—' }}</td>
                   <td>{{ e.created_at }}</td>
                   <td>{{ e.updated_at }}</td>
@@ -300,7 +324,7 @@
               {% endfor %}
             {% else %}
               <tr>
-                <td colspan="8" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có email nào phù hợp.</td>
+                <td colspan="9" style="text-align:center; color:var(--muted); padding:28px 0;">Chưa có email nào phù hợp.</td>
               </tr>
             {% endif %}
           </tbody>
