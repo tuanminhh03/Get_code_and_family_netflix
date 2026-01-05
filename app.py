@@ -223,6 +223,92 @@ def _log_activity(customer_id: int | None, *, requester_email: str, target_email
         print("[ActivityLog] Không thể lưu nhật ký", flush=True)
 
 
+def _load_seed_emails():
+    seed_path = os.path.join(os.getcwd(), "account.txt")
+    if not os.path.exists(seed_path):
+        return []
+    try:
+        with open(seed_path, encoding="utf-8") as f:
+            return [line.strip() for line in f.readlines() if line.strip()]
+    except Exception:  # pragma: no cover - best-effort seed
+        return []
+
+
+def _ensure_seed_tv_account():
+    """Đảm bảo luôn có ít nhất một email TV trong DB.
+
+    - Ưu tiên các email đã tồn tại, chỉ bật tv_allowed nếu cần.
+    - Nếu DB chưa có email, seed từ account.txt (dòng đầu tiên hợp lệ).
+    """
+    ensure_database()
+
+    existing = (
+        Customer.query.filter(
+            Customer.email.isnot(None),
+            Customer.email != "",
+        )
+        .order_by(Customer.id.asc())
+        .first()
+    )
+
+    if existing and existing.tv_allowed:
+        return existing
+
+    if existing and not existing.tv_allowed:
+        existing.tv_allowed = True
+        db.session.commit()
+        return existing
+
+    # Seed mới từ account.txt
+    seed_emails = _load_seed_emails()
+    for raw in seed_emails:
+        email = _normalize_email(raw)
+        if not email:
+            continue
+
+        existing_email = Customer.query.filter(func.lower(Customer.email) == email).first()
+        if existing_email:
+            if not existing_email.tv_allowed:
+                existing_email.tv_allowed = True
+                db.session.commit()
+            return existing_email
+
+        customer = Customer(email=email, tv_allowed=True)
+        db.session.add(customer)
+        db.session.commit()
+        return customer
+
+    return None
+
+
+def _pick_tv_customer(today: date | None = None):
+    today = today or date.today()
+    chosen = (
+        Customer.query.filter(
+            Customer.tv_allowed.is_(True),
+            Customer.email.isnot(None),
+            Customer.email != "",
+            or_(Customer.expiry_date.is_(None), Customer.expiry_date >= today),
+        )
+        .order_by(func.random())
+        .first()
+    )
+
+    if chosen:
+        return chosen
+
+    # Fallback: chọn bất kỳ email hợp lệ chưa hết hạn (dù tv_allowed=False)
+    return (
+        Customer.query.filter(
+            Customer.email.isnot(None),
+            Customer.email != "",
+            or_(Customer.expiry_date.is_(None), Customer.expiry_date >= today),
+        )
+        .order_by(func.random())
+        .first()
+    )
+
+
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     if not value:
         return ""
@@ -307,6 +393,7 @@ def index():
 @app.route('/tv')
 def tv_page():
     ensure_database()
+    _ensure_seed_tv_account()
     return render_template('tv.html')
 
 
@@ -494,24 +581,24 @@ def api_login_tv():
 @app.route('/api/tv-login', methods=['POST'])
 def api_tv_login():
     ensure_database()
+    _ensure_seed_tv_account()
 
     payload = request.get_json(silent=True) or {}
-    email = _normalize_email(payload.get('email'))
     password = (payload.get('password') or '').strip()
     code = (payload.get('code') or '').strip()
 
-    if not email:
-        return jsonify({"success": False, "message": "Vui lòng nhập email."}), 400
     if not password:
-        return jsonify({"success": False, "message": "Vui lòng nhập mật khẩu."}), 400
+        return jsonify({"success": False, "message": "Vui lòng nhập mật khẩu đăng nhập TV."}), 400
     if not re.fullmatch(r"\d{8}", code):
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
-    customer = Customer.query.filter(func.lower(Customer.email) == email).first()
+    customer = _pick_tv_customer()
     if not customer:
-        return jsonify({"success": False, "message": "Email chưa được cấp quyền đăng nhập TV."}), 403
-    if not customer.tv_allowed:
-        return jsonify({"success": False, "message": "Email này không được phép đăng nhập TV."}), 403
+        seeded = _ensure_seed_tv_account()
+        if seeded:
+            customer = seeded
+        else:
+            return jsonify({"success": False, "message": "Hiện chưa có email nào được cấp quyền đăng nhập TV."}), 503
 
     status = _evaluate_status(customer.expiry_date)
     if status == 'expired':
@@ -525,16 +612,19 @@ def api_tv_login():
         success = bool(result)
         message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
 
+    if success:
+        message = f"Đăng nhập thành công bằng email {customer.email}."
+
     _log_activity(
         customer.id,
-        requester_email=email,
-        target_email=email,
+        requester_email="auto",
+        target_email=customer.email,
         kind="login_tv",
         success=success,
         message=message,
     )
 
-    return jsonify({"success": success, "message": message, "raw": result}), (200 if success else 400)
+    return jsonify({"success": success, "message": message, "email": customer.email, "raw": result}), (200 if success else 400)
 
 
 @app.route('/admin/activity/<int:customer_id>')
@@ -947,7 +1037,7 @@ if __name__ == '__main__':
             print('✅ DB created/ready')
         # ❌ KHÔNG gọi ensure_worker() ở đây
     else:
-        warmup = str(os.getenv("TUKI_WARMUP", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
+        warmup = str(os.getenv("TUKI_WARMUP", "1")).strip().lower() in {"1", "true", "yes", "y", "on"}
         if warmup:
             try:
                 ensure_worker()  # ✅ Chỉ warm-up khi chạy server thật (khi bật TUKI_WARMUP)
