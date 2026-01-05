@@ -417,6 +417,25 @@ document.addEventListener('DOMContentLoaded', () => {
       loginTvStatus.innerHTML = `<div class="${cls}">${message}</div>`;
     };
 
+    const renderTvAttempts = (payload) => {
+      const attempts = Array.isArray(payload?.attempts) ? payload.attempts : [];
+      const ok = !!payload?.success;
+      const cls = ok ? 'alert success' : 'alert warn';
+      const summary = payload?.message || (ok ? 'Đăng nhập thành công.' : 'Không thể đăng nhập TV.');
+      const pool = Array.isArray(payload?.pool) ? payload.pool : [];
+      const poolList = pool.map((p) => p.email).filter(Boolean).join(', ');
+      const attemptsHtml = attempts
+        .map((item, idx) => {
+          const status = item.success ? '✅' : '⚠️';
+          const note = item.message || (item.success ? 'Thành công' : 'Thất bại');
+          const email = item.email || payload?.email || '—';
+          return `<div class="result-line"><strong>Lần ${idx + 1}:</strong> <span class="mono">${email}</span> — ${status} ${note}</div>`;
+        })
+        .join('');
+      const poolHtml = poolList ? `<div class="small muted">Danh sách xoay vòng: ${poolList}</div>` : '';
+      loginTvStatus.innerHTML = `<div class="${cls}">${summary}${attemptsHtml ? `<div class="attempts">${attemptsHtml}</div>` : ''}${poolHtml}</div>`;
+    };
+
     const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
 
     loginTvForm.addEventListener('submit', async (e) => {
@@ -449,12 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        // Hiển thị tiến trình giả lập
-        setStep('Đăng nhập TV...', 'info');
-        setTimeout(() => {
-          const msg = data?.message || (data?.success ? 'Đăng nhập thành công.' : 'Mã sai, vui lòng nhập lại.');
-          setStep(msg, data?.success ? 'success' : 'warn');
-        }, 400);
+        renderTvAttempts(data);
       } catch (err) {
         setStep('Lỗi khi gọi API đăng nhập TV.', 'danger');
       } finally {

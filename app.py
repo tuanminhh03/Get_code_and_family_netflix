@@ -9,7 +9,7 @@ from flask import (
     flash,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func, inspect, or_, text
+from sqlalchemy import func, inspect, or_, text, case
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
@@ -158,6 +158,18 @@ class ActivityLog(db.Model):
             "login_tv": "Đăng nhập TV",
         }
         return mapping.get(self.kind, self.kind or "Khác")
+
+class TvLoginEmail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def last_used_display(self):
+        if not self.last_used_at:
+            return "Chưa sử dụng"
+        return _format_local_time(self.last_used_at)
 
 
 def _parse_date(value: str):
@@ -365,6 +377,99 @@ def _get_tv_candidates(limit: int = 3, today: date | None = None):
     return candidates
 
 
+def _seed_tv_login_emails():
+    """Đưa danh sách email trong account.txt vào bảng quay vòng nếu bảng đang trống."""
+    try:
+        existing = TvLoginEmail.query.count()
+    except Exception:
+        return
+
+    if existing:
+        return
+
+    seed_emails = _load_seed_emails()
+    if not seed_emails:
+        return
+
+    added = 0
+    for raw in seed_emails:
+        email = _normalize_email(raw)
+        if not email:
+            continue
+        duplicate = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == email).first()
+        if duplicate:
+            continue
+        db.session.add(TvLoginEmail(email=email))
+        added += 1
+
+    if added:
+        db.session.commit()
+    else:
+        db.session.rollback()
+
+
+def _pick_next_tv_login_email(explicit_email: str | None = None):
+    """Chọn email tiếp theo để đăng nhập TV, quay vòng đều và tránh trùng khi chưa hết lượt."""
+
+    ensure_database()
+    _seed_tv_login_emails()
+
+    if explicit_email:
+        normalized = _normalize_email(explicit_email)
+        if not normalized:
+            return None
+        record = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == normalized).first()
+        if not record:
+            record = TvLoginEmail(email=normalized)
+            db.session.add(record)
+        record.last_used_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return record
+
+    candidate = (
+        TvLoginEmail.query.filter(TvLoginEmail.email.isnot(None), TvLoginEmail.email != "")
+        .order_by(
+            case((TvLoginEmail.last_used_at.is_(None), 0), else_=1),
+            TvLoginEmail.last_used_at.asc(),
+            TvLoginEmail.id.asc(),
+        )
+        .first()
+    )
+
+    if not candidate:
+        return None
+
+    candidate.last_used_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return candidate
+
+
+def _list_tv_login_emails():
+    ensure_database()
+    _seed_tv_login_emails()
+    try:
+        rows = (
+            TvLoginEmail.query.filter(TvLoginEmail.email.isnot(None), TvLoginEmail.email != "")
+            .order_by(
+                case((TvLoginEmail.last_used_at.is_(None), 0), else_=1),
+                TvLoginEmail.last_used_at.asc(),
+                TvLoginEmail.created_at.asc(),
+            )
+            .all()
+        )
+    except Exception:
+        return []
+
+    return [
+        {
+            "id": row.id,
+            "email": row.email,
+            "last_used": row.last_used_display,
+            "created_at": _format_local_time(row.created_at),
+        }
+        for row in rows
+    ]
+
 
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     if not value:
@@ -383,13 +488,27 @@ def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
 def _login_tv(password: str, code: str, email: str | None = None):
     """Ủy quyền sang module logintv để dùng chung fallback/validation."""
 
-    result = run_login_tv(password=password, code=code, email=email)
+    expected_password = str(getattr(config, "TV_PASSWORD", "") or os.getenv("TV_PASSWORD") or "").strip()
+    if expected_password and password != expected_password:
+        return {"success": False, "message": "Sai mật khẩu đăng nhập TV."}
+
+    if not re.fullmatch(r"\d{8}", code or ""):
+        return {"success": False, "message": "Mã TV phải đủ 8 số."}
+
+    chosen_email = email
+    if not chosen_email:
+        record = _pick_next_tv_login_email()
+        if not record:
+            return {"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}
+        chosen_email = record.email
+
+    result = run_login_tv(password=password, code=code, email=chosen_email)
 
     # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
     if isinstance(result, dict):
         success = bool(result.get("success"))
         message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        normalized = {"success": success, "message": message, "raw": result.get("raw")}
+        normalized = {"success": success, "message": message, "raw": result.get("raw"), "email": chosen_email}
         # Giữ lại bất kỳ thông tin phụ khác từ backend
         for key, value in result.items():
             if key not in normalized:
@@ -399,13 +518,14 @@ def _login_tv(password: str, code: str, email: str | None = None):
     if isinstance(result, (tuple, list)) and result:
         success = bool(result[0])
         message = str(result[1]) if len(result) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        return {"success": success, "message": message, "raw": result}
+        return {"success": success, "message": message, "raw": result, "email": chosen_email}
 
     success = bool(result)
     return {
         "success": success,
         "message": "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.",
         "raw": result,
+        "email": chosen_email,
     }
 
 # === WORKER (KEEP CHROME ALIVE) ===
@@ -585,6 +705,7 @@ def admin():
     ]
 
     next_url = request.full_path.rstrip('?')
+    tv_login_emails = _list_tv_login_emails()
 
     return render_template(
         'admin.html',
@@ -595,6 +716,7 @@ def admin():
         status_filter=status_filter,
         recent_activities=recent_activities,
         next_url=next_url,
+        tv_emails=tv_login_emails,
     )
 
 
@@ -610,8 +732,20 @@ def api_login_tv():
     result = _login_tv(password=password, code=code)
     success = bool(result.get("success"))
     message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+    chosen_email = result.get("email")
+    attempted = result.get("attempts") or ([{"email": chosen_email, "success": success, "message": message}] if chosen_email else [])
 
-    return jsonify({"success": success, "message": message, "raw": result})
+    response_payload = {
+        "success": success,
+        "message": message,
+        "email": chosen_email,
+        "raw": result,
+        "attempts": attempted,
+        "pool": _list_tv_login_emails(),
+    }
+
+    status_code = 200 if success else (403 if "mật khẩu" in message.lower() else 400)
+    return jsonify(response_payload), status_code
 
 
 
@@ -882,6 +1016,59 @@ def admin_manage():
 
         db.session.commit()
         flash(f'Đã xóa {len(customers_to_delete)} email.', 'success')
+        return redirect(next_url)
+
+    flash('Hành động không hợp lệ.', 'danger')
+    return redirect(next_url)
+
+
+@app.route('/admin/tv-emails', methods=['POST'])
+def admin_tv_emails():
+    if not session.get('is_admin'):
+        flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
+        return redirect(url_for('admin'))
+
+    ensure_database()
+    action = request.form.get('action')
+    next_url = _safe_next(request.form.get('next'))
+
+    if action == 'add':
+        raw_email = request.form.get('email')
+        email = _normalize_email(raw_email)
+        if not email:
+            flash('Vui lòng nhập email để đăng nhập TV.', 'danger')
+            return redirect(next_url)
+
+        email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+        if not re.match(email_pattern, email):
+            flash('Email không hợp lệ.', 'danger')
+            return redirect(next_url)
+
+        exists = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == email).first()
+        if exists:
+            flash('Email đã tồn tại trong danh sách quay vòng.', 'warning')
+            return redirect(next_url)
+
+        db.session.add(TvLoginEmail(email=email))
+        db.session.commit()
+        flash('Đã thêm email vào danh sách đăng nhập TV.', 'success')
+        return redirect(next_url)
+
+    if action == 'delete':
+        try:
+            email_id = int(request.form.get('email_id'))
+        except (TypeError, ValueError):
+            flash('Không xác định được email cần xóa.', 'danger')
+            return redirect(next_url)
+
+        record = TvLoginEmail.query.get(email_id)
+        if not record:
+            flash('Email không tồn tại.', 'warning')
+            return redirect(next_url)
+
+        db.session.delete(record)
+        db.session.commit()
+        flash('Đã xóa email khỏi danh sách đăng nhập TV.', 'success')
         return redirect(next_url)
 
     flash('Hành động không hợp lệ.', 'danger')
