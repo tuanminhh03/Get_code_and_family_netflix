@@ -190,6 +190,13 @@ def _status_meta(status: str):
     return mapping.get(status, mapping["active"])
 
 
+def _is_invalid_tv_code_message(message: str | None):
+    if not message:
+        return False
+    lowered = message.lower()
+    return "mã bạn nhập sai" in lowered or "mã đó không đúng" in lowered or "mã sai" in lowered
+
+
 def _safe_next(target: str | None):
     if not target:
         return url_for("admin")
@@ -657,6 +664,7 @@ def api_tv_login():
             success = bool(result)
             message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
 
+        invalid_code = _is_invalid_tv_code_message(message)
         attempts.append({"email": customer.email, "success": success, "message": message})
         final_raw = result
 
@@ -680,13 +688,19 @@ def api_tv_login():
             final_message = message
             break
 
+        if invalid_code:
+            status_code = 400
+            final_email = customer.email
+            final_message = "Mã bạn nhập sai vui lòng nhập lại."
+            break
+
     if status_code != 200:
         attempts_text = "; ".join(
             f"{item['email']} -> {'Thành công' if item['success'] else item['message']}" for item in attempts
         )
         final_message = (
             final_message
-            if "mật khẩu" in final_message.lower()
+            if "mật khẩu" in final_message.lower() or _is_invalid_tv_code_message(final_message)
             else f"Không thể đăng nhập TV. Đã thử: {attempts_text}"
         )
 
