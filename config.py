@@ -22,4 +22,4 @@ def _as_bool(value: str | None, default: bool = True) -> bool:
 
 
 # Bật headless khi chạy trên Ubuntu/SSH để Chrome không cần UI.
-TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=True)
+TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=False)

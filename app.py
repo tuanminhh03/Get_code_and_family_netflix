@@ -659,7 +659,7 @@ def admin_activity(customer_id: int):
 
 
 
-  ('/admin/manage', methods=['POST'])
+@app.route('/admin/manage', methods=['POST'])
 def admin_manage():
     if not session.get('is_admin'):
         flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
