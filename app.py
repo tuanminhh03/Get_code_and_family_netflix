@@ -310,6 +310,54 @@ def _pick_tv_customer(today: date | None = None):
     )
 
 
+def _get_tv_candidates(limit: int = 3, today: date | None = None):
+    """Trả về danh sách email có thể dùng để đăng nhập TV (ưu tiên tv_allowed)."""
+
+    today = today or date.today()
+    limit = max(1, limit or 1)
+    seen = set()
+    candidates: list[Customer] = []
+
+    def _append_unique(rows):
+        nonlocal candidates
+        for customer in rows:
+            email = _normalize_email(customer.email)
+            if not email or email in seen:
+                continue
+            seen.add(email)
+            candidates.append(customer)
+            if len(candidates) >= limit:
+                return True
+        return False
+
+    prioritized = (
+        Customer.query.filter(
+            Customer.tv_allowed.is_(True),
+            Customer.email.isnot(None),
+            Customer.email != "",
+            or_(Customer.expiry_date.is_(None), Customer.expiry_date >= today),
+        )
+        .order_by(func.random())
+        .limit(limit * 2)
+        .all()
+    )
+    if _append_unique(prioritized):
+        return candidates
+
+    fallback = (
+        Customer.query.filter(
+            Customer.email.isnot(None),
+            Customer.email != "",
+            or_(Customer.expiry_date.is_(None), Customer.expiry_date >= today),
+        )
+        .order_by(func.random())
+        .limit(limit * 3)
+        .all()
+    )
+    _append_unique(fallback)
+    return candidates
+
+
 
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     if not value:
@@ -575,36 +623,88 @@ def api_tv_login():
     if not re.fullmatch(r"\d{8}", code):
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
-    customer = _pick_tv_customer()
-    if not customer:
+    candidates = _get_tv_candidates(limit=3)
+    if not candidates:
         return jsonify({"success": False, "message": "Hiện chưa có email nào được cấp quyền đăng nhập TV."}), 503
 
+    attempts = []
+    final_email = None
+    final_message = "Mã sai, vui lòng nhập lại."
+    final_raw = None
+    status_code = 400
 
-    status = _evaluate_status(customer.expiry_date)
-    if status == 'expired':
-        return jsonify({"success": False, "message": "Gói đã hết hạn, vui lòng liên hệ admin để gia hạn."}), 403
+    for idx, customer in enumerate(candidates, start=1):
+        status = _evaluate_status(customer.expiry_date)
+        if status == 'expired':
+            attempts.append(
+                {"email": customer.email, "success": False, "message": "Gói đã hết hạn, vui lòng liên hệ admin để gia hạn."}
+            )
+            _log_activity(
+                customer.id,
+                requester_email="auto",
+                target_email=customer.email,
+                kind="login_tv",
+                success=False,
+                message=f"[Lần {idx}] Gói đã hết hạn, bỏ qua.",
+            )
+            continue
 
-    result = _login_tv(password=password, code=code, email=customer.email)
-    if isinstance(result, dict):
-        success = bool(result.get("success"))
-        message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-    else:
-        success = bool(result)
-        message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
+        result = _login_tv(password=password, code=code, email=customer.email)
+        if isinstance(result, dict):
+            success = bool(result.get("success"))
+            message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        else:
+            success = bool(result)
+            message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
 
-    if success:
-        message = f"Đăng nhập thành công bằng email {customer.email}."
+        attempts.append({"email": customer.email, "success": success, "message": message})
+        final_raw = result
 
-    _log_activity(
-        customer.id,
-        requester_email="auto",
-        target_email=customer.email,
-        kind="login_tv",
-        success=success,
-        message=message,
+        _log_activity(
+            customer.id,
+            requester_email="auto",
+            target_email=customer.email,
+            kind="login_tv",
+            success=success,
+            message=f"[Lần {idx}] {message}",
+        )
+
+        if success:
+            final_email = customer.email
+            final_message = f"Đăng nhập thành công bằng email {customer.email}."
+            status_code = 200
+            break
+
+        if "mật khẩu" in message.lower():
+            status_code = 403
+            final_message = message
+            break
+
+    if status_code != 200:
+        attempts_text = "; ".join(
+            f"{item['email']} -> {'Thành công' if item['success'] else item['message']}" for item in attempts
+        )
+        final_message = (
+            final_message
+            if "mật khẩu" in final_message.lower()
+            else f"Không thể đăng nhập TV. Đã thử: {attempts_text}"
+        )
+
+    if not final_email and attempts:
+        final_email = attempts[-1]["email"]
+
+    return (
+        jsonify(
+            {
+                "success": status_code == 200,
+                "message": final_message,
+                "email": final_email,
+                "attempted_emails": [item["email"] for item in attempts],
+                "raw": final_raw,
+            }
+        ),
+        status_code,
     )
-
-    return jsonify({"success": success, "message": message, "email": customer.email, "raw": result}), (200 if success else 400)
 
 
 @app.route('/admin/activity/<int:customer_id>')
