@@ -128,9 +128,9 @@ class Customer(db.Model):
     expiry_date = db.Column(db.Date)
     tv_allowed = db.Column(db.Boolean, default=False)
     notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     @property
@@ -148,7 +148,7 @@ class ActivityLog(db.Model):
     kind = db.Column(db.String(50))
     success = db.Column(db.Boolean, default=False)
     message = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     @property
     def kind_label(self):
@@ -227,7 +227,10 @@ def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     if not value:
         return ""
     try:
-        utc_dt = value.replace(tzinfo=timezone.utc)
+        if value.tzinfo:
+            utc_dt = value.astimezone(timezone.utc)
+        else:
+            utc_dt = value.replace(tzinfo=timezone.utc)
         local_dt = utc_dt.astimezone(timezone(timedelta(hours=tz_offset_hours)))
         return local_dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
@@ -419,7 +422,7 @@ def admin():
     expiring_customers = counts['expiring']
     expired_customers = counts['expired']
 
-    recent_threshold = datetime.utcnow() - timedelta(days=30)
+    recent_threshold = datetime.now(timezone.utc) - timedelta(days=30)
     recent_updates = Customer.query.filter(Customer.updated_at >= recent_threshold).count()
     renewal_rate = 0
     if total_customers:
@@ -850,7 +853,11 @@ def api_fetch():
             log_attempt(customer_id=phone_holder.id, success=False, message="Email đích hết hạn")
             return jsonify({"success": False, "message": "Email đích đã hết hạn, vui lòng liên hệ admin."}), 403
 
-        worker = ensure_worker()
+        try:
+            worker = ensure_worker()
+        except Exception as exc:
+            log_attempt(customer_id=phone_holder.id, success=False, message=f"Không khởi tạo được worker: {exc}")
+            return jsonify({"success": False, "message": "Hệ thống đang bận, vui lòng thử lại sau ít phút."}), 503
         print(f"[API] yêu cầu: kind={kind} email={fetch_email}")
         result = worker.fetch(email=fetch_email, kind=kind)
         print(f"[API] trả về: {result}")
