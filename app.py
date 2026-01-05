@@ -9,7 +9,7 @@ from flask import (
     flash,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func, or_, text
+from sqlalchemy import func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
@@ -27,6 +27,18 @@ app.secret_key = config.SECRET_KEY
 db = SQLAlchemy(app)
 
 
+def _customer_table_name():
+    try:
+        inspector = inspect(db.engine)
+        if inspector.has_table(Customer.__tablename__):
+            return Customer.__tablename__
+        if inspector.has_table("customers"):
+            return "customers"
+    except Exception:
+        pass
+    return Customer.__tablename__
+
+
 def ensure_database():
     db.create_all()
     _ensure_email_nullable()
@@ -34,8 +46,9 @@ def ensure_database():
 
 
 def _ensure_email_nullable():
+    table_name = _customer_table_name()
     try:
-        result = db.session.execute(text("PRAGMA table_info(customers)")).fetchall()
+        result = db.session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
     except Exception:
         return
 
@@ -48,11 +61,11 @@ def _ensure_email_nullable():
         return
 
     with db.engine.begin() as conn:
-        conn.execute(text("ALTER TABLE customers RENAME TO customers_old"))
+        conn.execute(text(f"ALTER TABLE {table_name} RENAME TO {table_name}_old"))
         conn.execute(
             text(
-                """
-                CREATE TABLE customers (
+                f"""
+                CREATE TABLE {table_name} (
                     id INTEGER PRIMARY KEY,
                     email VARCHAR(255),
                     phone VARCHAR(50),
@@ -65,21 +78,22 @@ def _ensure_email_nullable():
                 """
             )
         )
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_customers_email ON customers (email)"))
+        conn.execute(text(f"CREATE UNIQUE INDEX IF NOT EXISTS ix_{table_name}_email ON {table_name} (email)"))
         conn.execute(
             text(
-                """
-                INSERT INTO customers (id, email, phone, expiry_date, tv_allowed, notes, created_at, updated_at)
-                SELECT id, email, phone, expiry_date, 0 AS tv_allowed, notes, created_at, updated_at FROM customers_old
+                f"""
+                INSERT INTO {table_name} (id, email, phone, expiry_date, tv_allowed, notes, created_at, updated_at)
+                SELECT id, email, phone, expiry_date, 0 AS tv_allowed, notes, created_at, updated_at FROM {table_name}_old
                 """
             )
         )
-        conn.execute(text("DROP TABLE customers_old"))
+        conn.execute(text(f"DROP TABLE {table_name}_old"))
 
 
 def _ensure_tv_allowed_column():
+    table_name = _customer_table_name()
     try:
-        result = db.session.execute(text("PRAGMA table_info(customers)")).fetchall()
+        result = db.session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
     except Exception:
         return
 
@@ -89,9 +103,10 @@ def _ensure_tv_allowed_column():
 
     try:
         with db.engine.begin() as conn:
-            conn.execute(text("ALTER TABLE customers ADD COLUMN tv_allowed BOOLEAN DEFAULT 0"))
+            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN tv_allowed BOOLEAN DEFAULT 0"))
+            conn.execute(text(f"UPDATE {table_name} SET tv_allowed = 0 WHERE tv_allowed IS NULL"))
     except Exception:
-        print("[DB] Không thể thêm cột tv_allowed", flush=True)
+        print(f"[DB] Không thể thêm cột tv_allowed cho bảng {table_name}", flush=True)
 
 
 def _parse_timestamp_candidates(ts_raw: str):
