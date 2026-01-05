@@ -26,6 +26,8 @@ app.secret_key = config.SECRET_KEY
 
 db = SQLAlchemy(app)
 
+TV_REMOTE_NOTE_MARKER = "[TV-REMOTE]"
+
 
 def _customer_table_name():
     try:
@@ -209,6 +211,28 @@ def _is_invalid_tv_code_message(message: str | None):
     return "mã bạn nhập sai" in lowered or "mã đó không đúng" in lowered or "mã sai" in lowered
 
 
+def _is_tv_remote_login_message(message: str | None):
+    if not message:
+        return False
+
+    lowered = message.lower()
+    keywords = [
+        "điều khiển tv",
+        "sign in using your remote",
+        "sign in with your remote",
+        "try using your remote",
+        "hãy thử đăng nhập bằng điều khiển tv",
+    ]
+    return any(key in lowered for key in keywords)
+
+
+def _is_tv_remote_flagged(customer: Customer | None):
+    if not customer:
+        return False
+    notes = (customer.notes or "").lower()
+    return TV_REMOTE_NOTE_MARKER.lower() in notes
+
+
 def _safe_next(target: str | None):
     if not target:
         return url_for("admin")
@@ -342,6 +366,8 @@ def _get_tv_candidates(limit: int = 3, today: date | None = None):
         for customer in rows:
             email = _normalize_email(customer.email)
             if not email or email in seen:
+                continue
+            if _is_tv_remote_flagged(customer):
                 continue
             seen.add(email)
             candidates.append(customer)
@@ -534,11 +560,40 @@ def _login_tv(password: str, code: str, email: str | None = None):
 
     result = run_login_tv(password=password, code=code, email=chosen_email)
 
+    def _flag_remote_issue():
+        try:
+            normalized = _normalize_email(chosen_email)
+            if not normalized:
+                return
+
+            customer = Customer.query.filter(func.lower(Customer.email) == normalized).first()
+            if customer:
+                existing_notes = customer.notes or ""
+                if TV_REMOTE_NOTE_MARKER.lower() not in existing_notes.lower():
+                    customer.notes = f"{existing_notes} | {TV_REMOTE_NOTE_MARKER}" if existing_notes else TV_REMOTE_NOTE_MARKER
+                customer.tv_allowed = False
+                db.session.commit()
+            record = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == normalized).first()
+            if record:
+                db.session.delete(record)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
     # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
     if isinstance(result, dict):
         success = bool(result.get("success"))
         message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        normalized = {"success": success, "message": message, "raw": result.get("raw"), "email": chosen_email}
+        remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
+        if remote_required:
+            _flag_remote_issue()
+        normalized = {
+            "success": success,
+            "message": message,
+            "raw": result.get("raw"),
+            "email": chosen_email,
+            "remote_login_required": remote_required,
+        }
         # Giữ lại bất kỳ thông tin phụ khác từ backend
         for key, value in result.items():
             if key not in normalized:
@@ -548,14 +603,28 @@ def _login_tv(password: str, code: str, email: str | None = None):
     if isinstance(result, (tuple, list)) and result:
         success = bool(result[0])
         message = str(result[1]) if len(result) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        return {"success": success, "message": message, "raw": result, "email": chosen_email}
+        remote_required = _is_tv_remote_login_message(message)
+        if remote_required:
+            _flag_remote_issue()
+        return {
+            "success": success,
+            "message": message,
+            "raw": result,
+            "email": chosen_email,
+            "remote_login_required": remote_required,
+        }
 
     success = bool(result)
+    message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
+    remote_required = _is_tv_remote_login_message(message)
+    if remote_required:
+        _flag_remote_issue()
     return {
         "success": success,
-        "message": "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.",
+        "message": message,
         "raw": result,
         "email": chosen_email,
+        "remote_login_required": remote_required,
     }
 
 # === WORKER (KEEP CHROME ALIVE) ===
@@ -786,9 +855,15 @@ def api_login_tv():
 
         password_error = "mật khẩu" in message.lower()
         invalid_code = _is_invalid_tv_code_message(message)
+        remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
         attempt_message = message
         if not success and not invalid_code and not password_error:
             attempt_message = "Mail không log được TV"
+
+        if remote_required:
+            final_message = "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này."
+            attempts.append({"email": record.email, "success": False, "message": final_message})
+            continue
 
         attempts.append({"email": record.email, "success": success, "message": attempt_message})
 
@@ -859,6 +934,7 @@ def api_tv_login():
     final_message = "Mã sai, vui lòng nhập lại."
     final_raw = None
     status_code = 400
+    remote_error_seen = False
 
     for idx, customer in enumerate(candidates, start=1):
         status = _evaluate_status(customer.expiry_date)
@@ -885,7 +961,11 @@ def api_tv_login():
             message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
 
         invalid_code = _is_invalid_tv_code_message(message)
-        attempts.append({"email": customer.email, "success": success, "message": message})
+        remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
+        attempt_message = (
+            "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này." if remote_required else message
+        )
+        attempts.append({"email": customer.email, "success": success, "message": attempt_message})
         final_raw = result
 
         _log_activity(
@@ -894,8 +974,14 @@ def api_tv_login():
             target_email=customer.email,
             kind="login_tv",
             success=success,
-            message=f"[Lần {idx}] {message}",
+            message=f"[Lần {idx}] {attempt_message}",
         )
+
+        if remote_required:
+            status_code = 400
+            final_message = attempt_message
+            remote_error_seen = True
+            continue
 
         if success:
             final_email = customer.email
@@ -920,7 +1006,7 @@ def api_tv_login():
         )
         final_message = (
             final_message
-            if "mật khẩu" in final_message.lower() or _is_invalid_tv_code_message(final_message)
+            if "mật khẩu" in final_message.lower() or _is_invalid_tv_code_message(final_message) or remote_error_seen
             else f"Không thể đăng nhập TV. Đã thử: {attempts_text}"
         )
 
