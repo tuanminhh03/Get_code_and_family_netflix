@@ -4,8 +4,9 @@ from datetime import datetime
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
@@ -100,10 +101,11 @@ class TukiPersistent:
         opts.add_argument("--window-size=1280,900")
         opts.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+        opts.page_load_strategy = "eager"
 
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=opts)
-        self.driver.set_page_load_timeout(30)
+        self.driver.set_page_load_timeout(60)
         self.driver.implicitly_wait(2)
 
         self.wait = WebDriverWait(self.driver, WAIT_LONG)
@@ -132,7 +134,16 @@ class TukiPersistent:
         base = (getattr(config, "TUKI_URL", "") or "").strip()
         if not base:
             raise RuntimeError("Thiếu TUKI_URL trong config/.env")
-        self.driver.get(base)
+        try:
+            self.driver.get(base)
+        except TimeoutException:
+            print(f"[Tuki] Quá thời gian tải trang {base}, thử dừng và tiếp tục...", flush=True)
+            try:
+                self.driver.execute_script("window.stop();")
+            except Exception:
+                pass
+        except WebDriverException as exc:
+            raise RuntimeError(f"Không thể mở trang Tukitech: {exc}") from exc
 
         # Chờ hoặc form username, hoặc input email
         try:
