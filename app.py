@@ -471,6 +471,36 @@ def _list_tv_login_emails():
     ]
 
 
+def _get_tv_login_records(limit: int | None = None):
+    ensure_database()
+    _seed_tv_login_emails()
+
+    try:
+        query = (
+            TvLoginEmail.query.filter(TvLoginEmail.email.isnot(None), TvLoginEmail.email != "")
+            .order_by(
+                case((TvLoginEmail.last_used_at.is_(None), 0), else_=1),
+                TvLoginEmail.last_used_at.asc(),
+                TvLoginEmail.created_at.asc(),
+            )
+        )
+        if limit:
+            query = query.limit(limit)
+        return query.all()
+    except Exception:
+        return []
+
+
+def _mark_tv_login_email_used(record: TvLoginEmail | None):
+    if not record:
+        return
+    try:
+        record.last_used_at = datetime.now(timezone.utc)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
     if not value:
         return ""
@@ -729,22 +759,78 @@ def api_login_tv():
     password = (payload.get('password') or '').strip()
     code = (payload.get('code') or '').strip()
 
-    result = _login_tv(password=password, code=code)
-    success = bool(result.get("success"))
-    message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-    chosen_email = result.get("email")
-    attempted = result.get("attempts") or ([{"email": chosen_email, "success": success, "message": message}] if chosen_email else [])
+    if not re.fullmatch(r"\d{8}", code or ""):
+        return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
+
+    login_records = _get_tv_login_records()
+    if not login_records:
+        return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
+
+    attempts = []
+    final_success = False
+    final_message = "Không thể đăng nhập TV."
+    final_email = None
+    final_raw = None
+    status_code = 400
+    invalid_code_seen = False
+
+    for record in login_records:
+        result = _login_tv(password=password, code=code, email=record.email)
+        final_raw = result
+        if isinstance(result, dict):
+            success = bool(result.get("success"))
+            message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        else:
+            success = bool(result)
+            message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
+
+        password_error = "mật khẩu" in message.lower()
+        invalid_code = _is_invalid_tv_code_message(message)
+        attempt_message = message
+        if not success and not invalid_code and not password_error:
+            attempt_message = "Mail không log được TV"
+
+        attempts.append({"email": record.email, "success": success, "message": attempt_message})
+
+        if success:
+            final_success = True
+            final_email = record.email
+            final_message = f"Đăng nhập thành công bằng email {record.email}."
+            status_code = 200
+            _mark_tv_login_email_used(record)
+            break
+
+        if password_error:
+            final_email = record.email
+            final_message = message
+            status_code = 403
+            break
+
+        if invalid_code:
+            if not final_email:
+                final_email = record.email
+            final_message = "Mã bạn nhập sai vui lòng nhập lại."
+            status_code = 400
+            invalid_code_seen = True
+            continue
+
+        _mark_tv_login_email_used(record)
+
+    if not final_email and attempts:
+        final_email = attempts[-1]["email"]
+
+    if not final_success and status_code == 400 and not invalid_code_seen:
+        final_message = final_message or "Không thể đăng nhập TV với các email hiện tại."
 
     response_payload = {
-        "success": success,
-        "message": message,
-        "email": chosen_email,
-        "raw": result,
-        "attempts": attempted,
+        "success": final_success,
+        "message": final_message,
+        "email": final_email,
+        "raw": final_raw,
+        "attempts": attempts,
         "pool": _list_tv_login_emails(),
     }
 
-    status_code = 200 if success else (403 if "mật khẩu" in message.lower() else 400)
     return jsonify(response_payload), status_code
 
 
