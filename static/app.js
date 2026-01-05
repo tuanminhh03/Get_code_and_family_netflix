@@ -1,6 +1,7 @@
 // static/app.js (REPLACE your old file with this)
 document.addEventListener('DOMContentLoaded', () => {
   const isAdminPage = window.location.pathname.startsWith('/admin');
+  const isTvPage = window.location.pathname.startsWith('/tv');
   const emailInput = document.querySelector('input[name="email"]');
   const passInput  = document.querySelector('input[name="password"]');
   const btnLogin   = document.getElementById('btnLoginCode');
@@ -10,11 +11,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginTvForm = document.getElementById('loginTvForm');
   const loginTvStatus = document.getElementById('loginTvStatus');
   const btnLoginTv = document.getElementById('btnLoginTv');
+  const tvLoginPageForm = document.getElementById('tvLoginPageForm');
+  const tvStatusBox = document.getElementById('tvStatusBox');
+  const tvLoginPageBtn = document.getElementById('tvLoginPageBtn');
   const activityModal = document.getElementById('activityModal');
   const activitySubtitle = document.getElementById('activitySubtitle');
   const activityLogs = document.getElementById('activityLogs');
 
-  if (!isAdminPage && !resEl) {
+  if (!isAdminPage && !isTvPage && !resEl) {
     console.warn('result element not found (#result)');
     return;
   }
@@ -349,6 +353,60 @@ document.addEventListener('DOMContentLoaded', () => {
     span.setAttribute('role', 'button');
     span.setAttribute('aria-label', 'Nhấp để sao chép email');
   });
+
+  // === Login TV page (public) ===
+  if (isTvPage && tvLoginPageForm && tvStatusBox) {
+    const setTvStatus = (message, state = 'info') => {
+      const cls = {
+        info: 'alert info',
+        success: 'alert success',
+        warn: 'alert warn',
+        danger: 'alert danger',
+      }[state] || 'alert info';
+      tvStatusBox.innerHTML = `<div class="${cls}">${message}</div>`;
+    };
+
+    const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
+
+    tvLoginPageForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = tvLoginPageForm.querySelector('input[name="tv_email"]').value.trim();
+      const password = tvLoginPageForm.querySelector('input[name="tv_password"]').value.trim();
+      const code = tvLoginPageForm.querySelector('input[name="tv_code"]').value.trim();
+
+      if (!email) {
+        setTvStatus('Vui lòng nhập email.', 'warn');
+        return;
+      }
+      if (!password) {
+        setTvStatus('Vui lòng nhập mật khẩu.', 'warn');
+        return;
+      }
+      if (!validateCode(code)) {
+        setTvStatus('Mã TV phải đủ 8 số.', 'warn');
+        return;
+      }
+
+      setTvStatus('Đang xác minh quyền truy cập TV...', 'info');
+      tvLoginPageBtn?.setAttribute('disabled', 'disabled');
+
+      try {
+        const resp = await fetch('/api/tv-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, code })
+        });
+        const data = await resp.json();
+        const ok = resp.ok && data?.success;
+        const msg = data?.message || (ok ? 'Đăng nhập thành công.' : 'Không thể đăng nhập TV.');
+        setTvStatus(msg, ok ? 'success' : 'warn');
+      } catch (err) {
+        setTvStatus('Lỗi khi gọi API đăng nhập TV.', 'danger');
+      } finally {
+        tvLoginPageBtn?.removeAttribute('disabled');
+      }
+    });
+  }
 
   // === Login TV (admin) ===
   if (loginTvForm && loginTvStatus) {
