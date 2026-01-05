@@ -928,7 +928,9 @@ if __name__ == '__main__':
         warmup = str(os.getenv("TUKI_WARMUP", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
         if warmup:
             try:
-                ensure_worker()  # ✅ Chỉ warm-up khi chạy server thật
+                ensure_worker()  # ✅ Chỉ warm-up khi chạy server thật (khi bật TUKI_WARMUP)
             except Exception as exc:
                 print(f"⚠️ Không thể khởi tạo worker tự động: {exc}. Worker sẽ khởi tạo khi có request.", flush=True)
+
         app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        
