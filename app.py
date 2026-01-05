@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
 import importlib
 import config
+import os
 import re
 
 # Flask init
@@ -924,5 +925,12 @@ if __name__ == '__main__':
             print('✅ DB created/ready')
         # ❌ KHÔNG gọi ensure_worker() ở đây
     else:
-        ensure_worker()  # ✅ Chỉ warm-up khi chạy server thật
+        warmup = str(os.getenv("TUKI_WARMUP", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
+        if warmup:
+            try:
+                ensure_worker()  # ✅ Chỉ warm-up khi chạy server thật (khi bật TUKI_WARMUP)
+            except Exception as exc:
+                print(f"⚠️ Không thể khởi tạo worker tự động: {exc}. Worker sẽ khởi tạo khi có request.", flush=True)
+
         app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        
