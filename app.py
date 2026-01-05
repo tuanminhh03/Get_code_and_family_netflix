@@ -283,6 +283,8 @@ def _ensure_seed_tv_account():
 
 def _pick_tv_customer(today: date | None = None):
     today = today or date.today()
+
+    # Ưu tiên account được bật tv_allowed + còn hạn
     chosen = (
         Customer.query.filter(
             Customer.tv_allowed.is_(True),
@@ -293,11 +295,10 @@ def _pick_tv_customer(today: date | None = None):
         .order_by(func.random())
         .first()
     )
-
     if chosen:
         return chosen
 
-    # Fallback: chọn bất kỳ email hợp lệ chưa hết hạn (dù tv_allowed=False)
+    # Fallback: chọn bất kỳ email hợp lệ còn hạn (dù tv_allowed=False)
     return (
         Customer.query.filter(
             Customer.email.isnot(None),
@@ -307,6 +308,7 @@ def _pick_tv_customer(today: date | None = None):
         .order_by(func.random())
         .first()
     )
+
 
 
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
@@ -578,10 +580,12 @@ def api_login_tv():
     return jsonify({"success": success, "message": message, "raw": result})
 
 
+
 @app.route('/api/tv-login', methods=['POST'])
 def api_tv_login():
     ensure_database()
     _ensure_seed_tv_account()
+
 
     payload = request.get_json(silent=True) or {}
     password = (payload.get('password') or '').strip()
@@ -594,11 +598,8 @@ def api_tv_login():
 
     customer = _pick_tv_customer()
     if not customer:
-        seeded = _ensure_seed_tv_account()
-        if seeded:
-            customer = seeded
-        else:
-            return jsonify({"success": False, "message": "Hiện chưa có email nào được cấp quyền đăng nhập TV."}), 503
+        return jsonify({"success": False, "message": "Hiện chưa có email nào được cấp quyền đăng nhập TV."}), 503
+
 
     status = _evaluate_status(customer.expiry_date)
     if status == 'expired':
@@ -657,7 +658,8 @@ def admin_activity(customer_id: int):
     return jsonify({"success": True, "logs": payload})
 
 
-@app.route('/admin/manage', methods=['POST'])
+
+  ('/admin/manage', methods=['POST'])
 def admin_manage():
     if not session.get('is_admin'):
         flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
