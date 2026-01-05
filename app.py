@@ -807,12 +807,11 @@ def api_login_tv():
             break
 
         if invalid_code:
-            if not final_email:
-                final_email = record.email
+            invalid_code_seen = True
+            final_email = record.email
             final_message = "Mã bạn nhập sai vui lòng nhập lại."
             status_code = 400
-            invalid_code_seen = True
-            continue
+            break
 
         _mark_tv_login_email_used(record)
 
@@ -821,6 +820,7 @@ def api_login_tv():
 
     if not final_success and status_code == 400 and not invalid_code_seen:
         final_message = final_message or "Không thể đăng nhập TV với các email hiện tại."
+
 
     response_payload = {
         "success": final_success,
