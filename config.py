@@ -21,5 +21,19 @@ def _as_bool(value: str | None, default: bool = True) -> bool:
     return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
 
 
-# Bật headless khi chạy trên Ubuntu/SSH để Chrome không cần UI.
-TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=False)
+def _headless_default() -> bool:
+    """
+    Headless mặc định:
+    - Windows / có DISPLAY/WAYLAND: ưu tiên hiển thị (default False)
+    - Không có UI (server/CI, không DISPLAY): bật headless để tránh treo Chrome
+    """
+    if os.name == "nt":
+        return False
+    if os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY"):
+        return False
+    return True
+
+
+# Nếu muốn xem trình duyệt, đặt TUKI_HEADLESS=0 hoặc "false".
+# Nếu muốn headless trên máy có UI, đặt TUKI_HEADLESS=1.
+TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=_headless_default())

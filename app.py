@@ -1491,12 +1491,14 @@ if __name__ == '__main__':
             print('✅ DB created/ready')
         # ❌ KHÔNG gọi ensure_worker() ở đây
     else:
-        warmup = str(os.getenv("TUKI_WARMUP", "1")).strip().lower() in {"1", "true", "yes", "y", "on"}
+        warmup = str(os.getenv("TUKI_WARMUP", "0")).strip().lower() in {"1", "true", "yes", "y", "on"}
         if warmup:
             try:
                 ensure_worker()  # ✅ Chỉ warm-up khi chạy server thật (khi bật TUKI_WARMUP)
             except Exception as exc:
                 print(f"⚠️ Không thể khởi tạo worker tự động: {exc}. Worker sẽ khởi tạo khi có request.", flush=True)
+        else:
+            print("ℹ️ Bỏ qua warm-up TukiPersistent (TUKI_WARMUP=0). Worker sẽ khởi tạo khi có request đầu tiên.", flush=True)
 
         app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
         
