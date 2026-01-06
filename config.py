@@ -21,5 +21,6 @@ def _as_bool(value: str | None, default: bool = True) -> bool:
     return str(value).strip().lower() in {"1", "true", "t", "yes", "y", "on"}
 
 
-# Bật headless khi chạy trên Ubuntu/SSH để Chrome không cần UI.
-TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=False)
+# Bật headless mặc định để tránh lỗi khi môi trường không có UI/Chrome.
+# Nếu muốn xem trình duyệt, đặt TUKI_HEADLESS=0 hoặc "false".
+TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=True)
