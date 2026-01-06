@@ -124,6 +124,7 @@ def _parse_timestamp_candidates(ts_raw: str):
             continue
     return ts_raw, ""
 
+
 # === DATABASE MODEL ===
 class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -162,6 +163,7 @@ class ActivityLog(db.Model):
             "login_tv": "Đăng nhập TV",
         }
         return mapping.get(self.kind, self.kind or "Khác")
+
 
 class TvLoginEmail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -273,6 +275,14 @@ def _log_activity(customer_id: int | None, *, requester_email: str, target_email
     except Exception:
         db.session.rollback()
         print("[ActivityLog] Không thể lưu nhật ký", flush=True)
+
+
+def _find_customers_by_emails(emails: list[str]):
+    normalized_emails = {_normalize_email(email) for email in emails if _normalize_email(email)}
+    if not normalized_emails:
+        return {}
+    rows = Customer.query.filter(func.lower(Customer.email).in_(normalized_emails)).all()
+    return {(_normalize_email(row.email)): row for row in rows}
 
 
 def _load_seed_emails():
@@ -468,15 +478,23 @@ def _pick_next_tv_login_email(explicit_email: str | None = None):
             TvLoginEmail.last_used_at.asc(),
             TvLoginEmail.id.asc(),
         )
-        .first()
+        .limit(50)
+        .all()
     )
 
     if not candidate:
         return None
 
-    candidate.last_used_at = datetime.now(timezone.utc)
-    db.session.commit()
-    return candidate
+    customer_map = _find_customers_by_emails([row.email for row in candidate])
+    for row in candidate:
+        customer = customer_map.get(_normalize_email(row.email))
+        if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer):
+            continue
+        row.last_used_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return row
+
+    return None
 
 
 def _list_tv_login_emails():
@@ -495,18 +513,32 @@ def _list_tv_login_emails():
     except Exception:
         return []
 
+    customer_map = _find_customers_by_emails([row.email for row in rows])
+
+    def _tv_email_status(email: str):
+        customer = customer_map.get(_normalize_email(email))
+        if not customer:
+            return ""
+        statuses = []
+        if _is_tv_remote_flagged(customer):
+            statuses.append("Yêu cầu đăng nhập bằng điều khiển TV")
+        if _is_tv_login_failed(customer):
+            statuses.append(TV_LOGIN_FAILURE_NOTE)
+        return " | ".join(statuses)
+
     return [
         {
             "id": row.id,
             "email": row.email,
             "last_used": row.last_used_display,
             "created_at": _format_local_time(row.created_at),
+            "status": _tv_email_status(row.email),
         }
         for row in rows
     ]
 
 
-def _get_tv_login_records(limit: int | None = None):
+def _get_tv_login_records(limit: int | None = None, *, exclude_flagged: bool = False):
     ensure_database()
     _seed_tv_login_emails()
 
@@ -521,7 +553,17 @@ def _get_tv_login_records(limit: int | None = None):
         )
         if limit:
             query = query.limit(limit)
-        return query.all()
+        records = query.all()
+        if not exclude_flagged:
+            return records
+        customer_map = _find_customers_by_emails([row.email for row in records])
+        filtered = []
+        for row in records:
+            customer = customer_map.get(_normalize_email(row.email))
+            if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer):
+                continue
+            filtered.append(row)
+        return filtered
     except Exception:
         return []
 
@@ -564,7 +606,7 @@ def _flag_tv_login_issue(
             if disable_tv_allowed:
                 customer.tv_allowed = False
 
-        if rotation_record:
+        if rotation_record and remove_from_rotation:
             db.session.delete(rotation_record)
 
         if customer or rotation_record:
@@ -680,6 +722,7 @@ def _login_tv(password: str, code: str, email: str | None = None):
         "email": chosen_email,
         "remote_login_required": remote_required,
     }
+
 
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
@@ -885,7 +928,7 @@ def api_login_tv():
     if not re.fullmatch(r"\d{8}", code or ""):
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
-    login_records = _get_tv_login_records()
+    login_records = _get_tv_login_records(exclude_flagged=True)
     if not login_records:
         return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
 
@@ -1114,7 +1157,6 @@ def admin_activity(customer_id: int):
     ]
 
     return jsonify({"success": True, "logs": payload})
-
 
 
 @app.route('/admin/manage', methods=['POST'])
@@ -1532,8 +1574,6 @@ def api_fetch():
         return jsonify({"success": False, "message": f"Lỗi server: {e}"}), 500
 
 
-
-
 # === INIT DB ===
 @app.cli.command("init-db")
 def init_db():
@@ -1560,4 +1600,3 @@ if __name__ == '__main__':
             print("ℹ️ Bỏ qua warm-up TukiPersistent (TUKI_WARMUP=0). Worker sẽ khởi tạo khi có request đầu tiên.", flush=True)
 
         app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-        
