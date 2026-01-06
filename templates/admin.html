@@ -148,6 +148,7 @@
         <thead>
           <tr>
             <th>Email</th>
+            <th>Ghi chú</th>
             <th>Lần cuối sử dụng</th>
             <th>Ngày thêm</th>
             <th>Hành động</th>
@@ -158,6 +159,7 @@
             {% for item in tv_emails %}
               <tr>
                 <td class="mono email-cell">{{ item.email }}</td>
+                <td>{{ item.status or "—" }}</td>
                 <td>{{ item.last_used }}</td>
                 <td>{{ item.created_at }}</td>
                 <td class="actions-cell">

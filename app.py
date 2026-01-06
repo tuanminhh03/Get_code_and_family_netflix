@@ -27,6 +27,8 @@ app.secret_key = config.SECRET_KEY
 db = SQLAlchemy(app)
 
 TV_REMOTE_NOTE_MARKER = "[TV-REMOTE]"
+TV_LOGIN_FAILURE_MARKER = "[TV-LOGIN-FAILED]"
+TV_LOGIN_FAILURE_NOTE = "Không đăng nhập được TV."
 
 
 def _customer_table_name():
@@ -233,6 +235,13 @@ def _is_tv_remote_flagged(customer: Customer | None):
     return TV_REMOTE_NOTE_MARKER.lower() in notes
 
 
+def _is_tv_login_failed(customer: Customer | None):
+    if not customer:
+        return False
+    notes = (customer.notes or "").lower()
+    return TV_LOGIN_FAILURE_MARKER.lower() in notes
+
+
 def _safe_next(target: str | None):
     if not target:
         return url_for("admin")
@@ -264,6 +273,14 @@ def _log_activity(customer_id: int | None, *, requester_email: str, target_email
     except Exception:
         db.session.rollback()
         print("[ActivityLog] Không thể lưu nhật ký", flush=True)
+
+
+def _find_customers_by_emails(emails: list[str]):
+    normalized_emails = {_normalize_email(email) for email in emails if _normalize_email(email)}
+    if not normalized_emails:
+        return {}
+    rows = Customer.query.filter(func.lower(Customer.email).in_(normalized_emails)).all()
+    return {(_normalize_email(row.email)): row for row in rows}
 
 
 def _load_seed_emails():
@@ -367,7 +384,7 @@ def _get_tv_candidates(limit: int = 3, today: date | None = None):
             email = _normalize_email(customer.email)
             if not email or email in seen:
                 continue
-            if _is_tv_remote_flagged(customer):
+            if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer):
                 continue
             seen.add(email)
             candidates.append(customer)
@@ -459,15 +476,23 @@ def _pick_next_tv_login_email(explicit_email: str | None = None):
             TvLoginEmail.last_used_at.asc(),
             TvLoginEmail.id.asc(),
         )
-        .first()
+        .limit(50)
+        .all()
     )
 
     if not candidate:
         return None
 
-    candidate.last_used_at = datetime.now(timezone.utc)
-    db.session.commit()
-    return candidate
+    customer_map = _find_customers_by_emails([row.email for row in candidate])
+    for row in candidate:
+        customer = customer_map.get(_normalize_email(row.email))
+        if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer):
+            continue
+        row.last_used_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return row
+
+    return None
 
 
 def _list_tv_login_emails():
@@ -486,18 +511,32 @@ def _list_tv_login_emails():
     except Exception:
         return []
 
+    customer_map = _find_customers_by_emails([row.email for row in rows])
+
+    def _tv_email_status(email: str):
+        customer = customer_map.get(_normalize_email(email))
+        if not customer:
+            return ""
+        statuses = []
+        if _is_tv_remote_flagged(customer):
+            statuses.append("Yêu cầu đăng nhập bằng điều khiển TV")
+        if _is_tv_login_failed(customer):
+            statuses.append(TV_LOGIN_FAILURE_NOTE)
+        return " | ".join(statuses)
+
     return [
         {
             "id": row.id,
             "email": row.email,
             "last_used": row.last_used_display,
             "created_at": _format_local_time(row.created_at),
+            "status": _tv_email_status(row.email),
         }
         for row in rows
     ]
 
 
-def _get_tv_login_records(limit: int | None = None):
+def _get_tv_login_records(limit: int | None = None, *, exclude_flagged: bool = False):
     ensure_database()
     _seed_tv_login_emails()
 
@@ -512,7 +551,17 @@ def _get_tv_login_records(limit: int | None = None):
         )
         if limit:
             query = query.limit(limit)
-        return query.all()
+        records = query.all()
+        if not exclude_flagged:
+            return records
+        customer_map = _find_customers_by_emails([row.email for row in records])
+        filtered = []
+        for row in records:
+            customer = customer_map.get(_normalize_email(row.email))
+            if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer):
+                continue
+            filtered.append(row)
+        return filtered
     except Exception:
         return []
 
@@ -525,6 +574,53 @@ def _mark_tv_login_email_used(record: TvLoginEmail | None):
         db.session.commit()
     except Exception:
         db.session.rollback()
+
+
+def _flag_tv_login_issue(
+    email: str | None,
+    *,
+    marker: str,
+    note: str = "",
+    disable_tv_allowed: bool = True,
+    remove_from_rotation: bool = False,
+):
+    normalized = _normalize_email(email or "")
+    if not normalized:
+        return
+
+    try:
+        customer = Customer.query.filter(func.lower(Customer.email) == normalized).first()
+        rotation_record = None
+        if remove_from_rotation:
+            rotation_record = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == normalized).first()
+
+        if customer:
+            existing_notes = customer.notes or ""
+            if marker.lower() not in existing_notes.lower():
+                appended = f"{existing_notes} | {marker}".strip(" |")
+                if note:
+                    appended = f"{appended} - {note}"
+                customer.notes = appended
+            if disable_tv_allowed:
+                customer.tv_allowed = False
+
+        if rotation_record and remove_from_rotation:
+            db.session.delete(rotation_record)
+
+        if customer or rotation_record:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _flag_tv_login_failure(email: str | None):
+    _flag_tv_login_issue(
+        email,
+        marker=TV_LOGIN_FAILURE_MARKER,
+        note=TV_LOGIN_FAILURE_NOTE,
+        disable_tv_allowed=True,
+        remove_from_rotation=True,
+    )
 
 
 def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
@@ -560,33 +656,19 @@ def _login_tv(password: str, code: str, email: str | None = None):
 
     result = run_login_tv(password=password, code=code, email=chosen_email)
 
-    def _flag_remote_issue():
-        try:
-            normalized = _normalize_email(chosen_email)
-            if not normalized:
-                return
-
-            customer = Customer.query.filter(func.lower(Customer.email) == normalized).first()
-            if customer:
-                existing_notes = customer.notes or ""
-                if TV_REMOTE_NOTE_MARKER.lower() not in existing_notes.lower():
-                    customer.notes = f"{existing_notes} | {TV_REMOTE_NOTE_MARKER}" if existing_notes else TV_REMOTE_NOTE_MARKER
-                customer.tv_allowed = False
-                db.session.commit()
-            record = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == normalized).first()
-            if record:
-                db.session.delete(record)
-                db.session.commit()
-        except Exception:
-            db.session.rollback()
-
     # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
     if isinstance(result, dict):
         success = bool(result.get("success"))
         message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
         remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
         if remote_required:
-            _flag_remote_issue()
+            _flag_tv_login_issue(
+                chosen_email,
+                marker=TV_REMOTE_NOTE_MARKER,
+                note="Yêu cầu đăng nhập bằng điều khiển TV.",
+                disable_tv_allowed=True,
+                remove_from_rotation=False,
+            )
         normalized = {
             "success": success,
             "message": message,
@@ -605,7 +687,13 @@ def _login_tv(password: str, code: str, email: str | None = None):
         message = str(result[1]) if len(result) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
         remote_required = _is_tv_remote_login_message(message)
         if remote_required:
-            _flag_remote_issue()
+            _flag_tv_login_issue(
+                chosen_email,
+                marker=TV_REMOTE_NOTE_MARKER,
+                note="Yêu cầu đăng nhập bằng điều khiển TV.",
+                disable_tv_allowed=True,
+                remove_from_rotation=False,
+            )
         return {
             "success": success,
             "message": message,
@@ -618,7 +706,13 @@ def _login_tv(password: str, code: str, email: str | None = None):
     message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
     remote_required = _is_tv_remote_login_message(message)
     if remote_required:
-        _flag_remote_issue()
+        _flag_tv_login_issue(
+            chosen_email,
+            marker=TV_REMOTE_NOTE_MARKER,
+            note="Yêu cầu đăng nhập bằng điều khiển TV.",
+            disable_tv_allowed=True,
+            remove_from_rotation=False,
+        )
     return {
         "success": success,
         "message": message,
@@ -831,7 +925,7 @@ def api_login_tv():
     if not re.fullmatch(r"\d{8}", code or ""):
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
-    login_records = _get_tv_login_records()
+    login_records = _get_tv_login_records(exclude_flagged=True)
     if not login_records:
         return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
 
@@ -856,16 +950,18 @@ def api_login_tv():
         password_error = "mật khẩu" in message.lower()
         invalid_code = _is_invalid_tv_code_message(message)
         remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
-        attempt_message = message
-        if not success and not invalid_code and not password_error:
-            attempt_message = "Mail không log được TV"
 
         if remote_required:
             final_message = "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này."
             attempts.append({"email": record.email, "success": False, "message": final_message})
             continue
 
-        attempts.append({"email": record.email, "success": success, "message": attempt_message})
+        if not success and not invalid_code and not password_error:
+            attempts.append({"email": record.email, "success": False, "message": "Mail không log được TV"})
+            _flag_tv_login_failure(record.email)
+            continue
+
+        attempts.append({"email": record.email, "success": success, "message": message})
 
         if success:
             final_success = True
@@ -967,6 +1063,9 @@ def api_tv_login():
         )
         attempts.append({"email": customer.email, "success": success, "message": attempt_message})
         final_raw = result
+
+        if not success and not invalid_code and not remote_required and "mật khẩu" not in message.lower():
+            _flag_tv_login_failure(customer.email)
 
         _log_activity(
             customer.id,
