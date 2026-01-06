@@ -124,6 +124,7 @@ def _parse_timestamp_candidates(ts_raw: str):
             continue
     return ts_raw, ""
 
+
 # === DATABASE MODEL ===
 class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -162,6 +163,7 @@ class ActivityLog(db.Model):
             "login_tv": "Đăng nhập TV",
         }
         return mapping.get(self.kind, self.kind or "Khác")
+
 
 class TvLoginEmail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -582,7 +584,7 @@ def _flag_tv_login_issue(
     marker: str,
     note: str = "",
     disable_tv_allowed: bool = True,
-    remove_from_rotation: bool = False,
+    remove_from_rotation: bool = True,
 ):
     normalized = _normalize_email(email or "")
     if not normalized:
@@ -667,7 +669,7 @@ def _login_tv(password: str, code: str, email: str | None = None):
                 marker=TV_REMOTE_NOTE_MARKER,
                 note="Yêu cầu đăng nhập bằng điều khiển TV.",
                 disable_tv_allowed=True,
-                remove_from_rotation=False,
+                remove_from_rotation=True,
             )
         normalized = {
             "success": success,
@@ -692,7 +694,7 @@ def _login_tv(password: str, code: str, email: str | None = None):
                 marker=TV_REMOTE_NOTE_MARKER,
                 note="Yêu cầu đăng nhập bằng điều khiển TV.",
                 disable_tv_allowed=True,
-                remove_from_rotation=False,
+                remove_from_rotation=True,
             )
         return {
             "success": success,
@@ -711,7 +713,7 @@ def _login_tv(password: str, code: str, email: str | None = None):
             marker=TV_REMOTE_NOTE_MARKER,
             note="Yêu cầu đăng nhập bằng điều khiển TV.",
             disable_tv_allowed=True,
-            remove_from_rotation=False,
+            remove_from_rotation=True,
         )
     return {
         "success": success,
@@ -720,6 +722,7 @@ def _login_tv(password: str, code: str, email: str | None = None):
         "email": chosen_email,
         "remote_login_required": remote_required,
     }
+
 
 # === WORKER (KEEP CHROME ALIVE) ===
 _worker = None
@@ -1156,7 +1159,6 @@ def admin_activity(customer_id: int):
     return jsonify({"success": True, "logs": payload})
 
 
-
 @app.route('/admin/manage', methods=['POST'])
 def admin_manage():
     if not session.get('is_admin'):
@@ -1572,8 +1574,6 @@ def api_fetch():
         return jsonify({"success": False, "message": f"Lỗi server: {e}"}), 500
 
 
-
-
 # === INIT DB ===
 @app.cli.command("init-db")
 def init_db():
@@ -1600,4 +1600,3 @@ if __name__ == '__main__':
             print("ℹ️ Bỏ qua warm-up TukiPersistent (TUKI_WARMUP=0). Worker sẽ khởi tạo khi có request đầu tiên.", flush=True)
 
         app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-        
