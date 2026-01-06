@@ -244,6 +244,24 @@ def _is_tv_login_failed(customer: Customer | None):
     return TV_LOGIN_FAILURE_MARKER.lower() in notes
 
 
+def _strip_tv_markers(notes: str | None) -> str:
+    if not notes:
+        return ""
+
+    markers = [TV_REMOTE_NOTE_MARKER.lower(), TV_LOGIN_FAILURE_MARKER.lower()]
+    filtered_parts = []
+    for raw_part in notes.split("|"):
+        part = raw_part.strip()
+        if not part:
+            continue
+        lowered = part.lower()
+        if any(marker in lowered for marker in markers):
+            continue
+        filtered_parts.append(part)
+
+    return " | ".join(filtered_parts)
+
+
 def _safe_next(target: str | None):
     if not target:
         return url_for("admin")
@@ -807,6 +825,7 @@ def admin():
         total_customers += 1
 
         meta = _status_meta(status)
+        stripped_notes = _strip_tv_markers(customer.notes)
         days_remaining = None
         if customer.expiry_date:
             days_remaining = (customer.expiry_date - today).days
@@ -827,7 +846,7 @@ def admin():
                     "status_label": meta["label"],
                     "status_badge": meta["badge"],
                     "tv_allowed": bool(customer.tv_allowed),
-                    "notes": customer.notes or "",
+                    "notes": stripped_notes,
                     "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
                     "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
                 }
@@ -848,7 +867,7 @@ def admin():
                 "status_badge": meta["badge"],
                 "row_class": meta["row"],
                 "tv_allowed": bool(customer.tv_allowed),
-                "notes": customer.notes or "",
+                "notes": stripped_notes,
                 "created_at": customer.created_at.strftime("%d/%m/%Y %H:%M"),
                 "updated_at": customer.updated_at.strftime("%d/%m/%Y %H:%M") if customer.updated_at else "",
                 "days_remaining": days_remaining,
