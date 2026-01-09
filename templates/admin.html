@@ -146,60 +146,63 @@
         </form>
       </div>
 
-      <div class="card">
-        <div class="card-header">
+      <details class="card collapsible-card">
+        <summary class="card-header collapsible-summary">
           <div>
             <h2>Email đăng nhập TV</h2>
             <p class="subtle">Danh sách email được xoay vòng, không lặp lại cho đến khi đã dùng hết.</p>
           </div>
-        </div>
-        <form method="post" action="{{ url_for('admin_tv_emails') }}" class="form-grid">
-          <input type="hidden" name="action" value="add">
-          <input type="hidden" name="next" value="{{ next_url }}">
-          <label>Email đăng nhập TV
-            <input name="email" type="email" placeholder="email@domain.com" required>
-          </label>
-          <div class="actions">
-            <button type="submit" class="btn-secondary">Thêm email</button>
+          <span class="collapse-indicator">Nhấn để mở</span>
+        </summary>
+        <div class="collapsible-body">
+          <form method="post" action="{{ url_for('admin_tv_emails') }}" class="form-grid">
+            <input type="hidden" name="action" value="add">
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <label>Email đăng nhập TV
+              <input name="email" type="email" placeholder="email@domain.com" required>
+            </label>
+            <div class="actions">
+              <button type="submit" class="btn-secondary">Thêm email</button>
+            </div>
+          </form>
+          <div class="tv-email-list">
+            {% if tv_emails %}
+              {% for item in tv_emails %}
+                <div class="tv-email-item">
+                  <div class="tv-email-main">
+                    <div class="tv-email-label">Email đăng nhập TV</div>
+                    <div class="tv-email-value mono">{{ item.email }}</div>
+                    <div class="tv-email-actions">
+                      <form method="post" action="{{ url_for('admin_tv_emails') }}" onsubmit="return confirm('Xóa email này khỏi danh sách đăng nhập TV?');">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="email_id" value="{{ item.id }}">
+                        <input type="hidden" name="next" value="{{ next_url }}">
+                        <button type="submit" class="btn-secondary">Xóa</button>
+                      </form>
+                    </div>
+                  </div>
+                  <div class="tv-email-meta">
+                    <div class="tv-email-meta-item">
+                      <span class="tv-email-meta-label">Ghi chú</span>
+                      <span class="tv-email-meta-value">{{ item.status or "—" }}</span>
+                    </div>
+                    <div class="tv-email-meta-item">
+                      <span class="tv-email-meta-label">Lần cuối sử dụng</span>
+                      <span class="tv-email-meta-value">{{ item.last_used }}</span>
+                    </div>
+                    <div class="tv-email-meta-item">
+                      <span class="tv-email-meta-label">Ngày thêm</span>
+                      <span class="tv-email-meta-value">{{ item.created_at }}</span>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="empty-state">Chưa có email nào trong danh sách.</div>
+            {% endif %}
           </div>
-        </form>
-        <div class="tv-email-list">
-          {% if tv_emails %}
-            {% for item in tv_emails %}
-              <div class="tv-email-item">
-                <div class="tv-email-main">
-                  <div class="tv-email-label">Email đăng nhập TV</div>
-                  <div class="tv-email-value mono">{{ item.email }}</div>
-                  <div class="tv-email-actions">
-                    <form method="post" action="{{ url_for('admin_tv_emails') }}" onsubmit="return confirm('Xóa email này khỏi danh sách đăng nhập TV?');">
-                      <input type="hidden" name="action" value="delete">
-                      <input type="hidden" name="email_id" value="{{ item.id }}">
-                      <input type="hidden" name="next" value="{{ next_url }}">
-                      <button type="submit" class="btn-secondary">Xóa</button>
-                    </form>
-                  </div>
-                </div>
-                <div class="tv-email-meta">
-                  <div class="tv-email-meta-item">
-                    <span class="tv-email-meta-label">Ghi chú</span>
-                    <span class="tv-email-meta-value">{{ item.status or "—" }}</span>
-                  </div>
-                  <div class="tv-email-meta-item">
-                    <span class="tv-email-meta-label">Lần cuối sử dụng</span>
-                    <span class="tv-email-meta-value">{{ item.last_used }}</span>
-                  </div>
-                  <div class="tv-email-meta-item">
-                    <span class="tv-email-meta-label">Ngày thêm</span>
-                    <span class="tv-email-meta-value">{{ item.created_at }}</span>
-                  </div>
-                </div>
-              </div>
-            {% endfor %}
-          {% else %}
-            <div class="empty-state">Chưa có email nào trong danh sách.</div>
-          {% endif %}
         </div>
-      </div>
+      </details>
     </section>
 
     <div class="card">
@@ -351,63 +354,68 @@
       </div>
     </section>
 
-    <section class="card">
-      <form method="post" action="{{ url_for('admin_manage') }}" id="bulkDeleteForm">
-        <input type="hidden" name="action" value="bulk_delete">
-        <input type="hidden" name="next" value="{{ next_url }}">
-        <div class="card-header">
-          <h2>Danh sách email</h2>
-          <div class="actions">
-            <button type="submit" class="btn-secondary" id="bulkDeleteBtn" disabled>Xóa đã chọn</button>
+    <details class="card collapsible-card">
+      <summary class="card-header collapsible-summary">
+        <h2>Danh sách email</h2>
+        <span class="collapse-indicator">Nhấn để mở</span>
+      </summary>
+      <div class="collapsible-body">
+        <form method="post" action="{{ url_for('admin_manage') }}" id="bulkDeleteForm">
+          <input type="hidden" name="action" value="bulk_delete">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <div class="card-header">
+            <div class="actions">
+              <button type="submit" class="btn-secondary" id="bulkDeleteBtn" disabled>Xóa đã chọn</button>
+            </div>
           </div>
-        </div>
 
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th class="select-col"><input type="checkbox" id="selectAllEmails"></th>
-                <th>Email</th>
-                <th>Số điện thoại</th>
-                <th>Hạn sử dụng</th>
-                <th>Trạng thái</th>
-                <th>TV</th>
-                <th>Ghi chú</th>
-                <th>Đăng ký</th>
-                <th>Cập nhật</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% if emails %}
-                {% for e in emails %}
-                  <tr class="status-row">
-                    <td class="select-col"><input type="checkbox" class="email-select" name="customer_ids" value="{{ e.id }}"></td>
-                    <td class="mono email-cell"><span class="email-copy" data-copy-email="{{ e.email }}">{{ e.email }}</span></td>
-                    <td class="mono phone-cell">{{ e.phone or '—' }}</td>
-                    <td>{{ e.expiry_display }}</td>
-                    <td><span class="status-pill {{ e.status_badge }}">{{ e.status_label }}</span></td>
-                    <td>
-                      {% if e.tv_allowed %}
-                        <span class="status-pill status-pill-active">Được phép</span>
-                      {% else %}
-                        <span class="status-pill status-pill-expired">Chặn</span>
-                      {% endif %}
-                    </td>
-                    <td>{{ e.notes or '—' }}</td>
-                    <td>{{ e.created_at }}</td>
-                    <td>{{ e.updated_at }}</td>
-                  </tr>
-                {% endfor %}
-              {% else %}
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
                 <tr>
-                  <td colspan="9" class="empty-state">Chưa có email nào phù hợp.</td>
+                  <th class="select-col"><input type="checkbox" id="selectAllEmails"></th>
+                  <th>Email</th>
+                  <th>Số điện thoại</th>
+                  <th>Hạn sử dụng</th>
+                  <th>Trạng thái</th>
+                  <th>TV</th>
+                  <th>Ghi chú</th>
+                  <th>Đăng ký</th>
+                  <th>Cập nhật</th>
                 </tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </form>
-    </section>
+              </thead>
+              <tbody>
+                {% if emails %}
+                  {% for e in emails %}
+                    <tr class="status-row">
+                      <td class="select-col"><input type="checkbox" class="email-select" name="customer_ids" value="{{ e.id }}"></td>
+                      <td class="mono email-cell"><span class="email-copy" data-copy-email="{{ e.email }}">{{ e.email }}</span></td>
+                      <td class="mono phone-cell">{{ e.phone or '—' }}</td>
+                      <td>{{ e.expiry_display }}</td>
+                      <td><span class="status-pill {{ e.status_badge }}">{{ e.status_label }}</span></td>
+                      <td>
+                        {% if e.tv_allowed %}
+                          <span class="status-pill status-pill-active">Được phép</span>
+                        {% else %}
+                          <span class="status-pill status-pill-expired">Chặn</span>
+                        {% endif %}
+                      </td>
+                      <td>{{ e.notes or '—' }}</td>
+                      <td>{{ e.created_at }}</td>
+                      <td>{{ e.updated_at }}</td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="9" class="empty-state">Chưa có email nào phù hợp.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </form>
+      </div>
+    </details>
   </div>
   <div id="activityModal" class="modal hidden">
     <div class="modal-backdrop" data-close-modal></div>
