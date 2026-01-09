@@ -43,6 +43,11 @@ h1{
   letter-spacing:.3px;
 }
 .subtle{ color:var(--muted); margin: 0 0 22px; }
+.empty-state{
+  text-align:center;
+  color:var(--muted);
+  padding:22px 0;
+}
 
 /* =========================
    Card
@@ -61,6 +66,9 @@ h1{
   font-size: 20px;
   color:#cfe0ff;
 }
+.card-header .subtle{
+  margin:4px 0 0;
+}
 
 /* =========================
    Form Grid
@@ -72,6 +80,10 @@ h1{
 }
 label{ display:block; }
 label > small{ display:block; margin-top:6px; color:var(--muted); }
+.helper-line{
+  grid-column:1 / -1;
+  margin:0;
+}
 .checkbox-line{
   display:flex;
   gap:10px;
@@ -257,6 +269,9 @@ label small::before{
   border-radius:16px;
   border:1px solid var(--border);
 }
+.table-compact{
+  margin-top:14px;
+}
 .data-table{
   width:100%;
   border-collapse:collapse;
@@ -264,7 +279,7 @@ label small::before{
 }
 .data-table th,
 .data-table td{
-  padding:14px 16px;
+  padding:12px 16px;
   border-bottom:1px solid rgba(255,255,255,0.04);
   text-align:left;
 }
@@ -276,6 +291,9 @@ label small::before{
 }
 .data-table tbody tr:last-child td{
   border-bottom:none;
+}
+.data-table tbody tr:hover td{
+  background:rgba(255,255,255,0.03);
 }
 
 .select-col{
@@ -447,6 +465,33 @@ label small::before{
 @keyframes pop{
   from{ transform:scale(.96); opacity:0; }
   to{ transform:scale(1); opacity:1; }
+}
+
+/* =========================
+   Admin Layout
+========================= */
+.admin-hero{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:16px;
+  margin-bottom:18px;
+}
+.admin-hero .subtle{ margin-bottom:0; }
+.admin-login{
+  max-width:520px;
+}
+.stack > * + *{
+  margin-top:22px;
+}
+.section-grid{
+  display:grid;
+  gap:22px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.admin-stats .mini-card{
+  padding:20px;
 }
 
 @media (max-width: 720px){
