@@ -74,6 +74,41 @@ h3{
 .card-header .subtle{
   margin:4px 0 0;
 }
+.collapsible-card{
+  padding:0;
+}
+.collapsible-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  cursor:pointer;
+  list-style:none;
+  padding:24px;
+}
+.collapsible-card[open] .collapsible-summary{
+  border-bottom:1px solid var(--border);
+}
+.collapsible-summary::-webkit-details-marker{
+  display:none;
+}
+.collapsible-summary h2{
+  margin:0;
+}
+.collapsible-summary .subtle{
+  margin:6px 0 0;
+}
+.collapse-indicator{
+  font-size:13px;
+  color:var(--muted);
+  white-space:nowrap;
+}
+.collapsible-card[open] .collapse-indicator{
+  color:#cfe0ff;
+}
+.collapsible-body{
+  padding:20px 24px 24px;
+}
 
 /* =========================
    TV Login Layout
