@@ -1,23 +1,55 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1>Đăng nhập TV</h1>
-<p class="subtle">Trang riêng cho khách hàng được cho phép đăng nhập TV.</p>
-
-<section class="card">
-  <h2>Thông tin đăng nhập</h2>
-  <form id="tvLoginPageForm" class="form-grid">
-    <p class="subtle">Hệ thống sẽ tự chọn email được cấp quyền trong admin, bạn chỉ cần nhập mật khẩu và mã TV.</p>
-    <label>Mật khẩu
-      <input name="tv_password" type="password" placeholder="Nhập mật khẩu" required>
-    </label>
-    <label>Mã TV (8 số)
-      <input name="tv_code" inputmode="numeric" maxlength="8" pattern="\d{8}" placeholder="Nhập mã TV 8 số" required>
-    </label>
-    <div class="actions">
-      <button type="submit" class="btn-primary" id="tvLoginPageBtn">Đăng nhập TV</button>
-    </div>
-  </form>
-  <div id="tvStatusBox" class="result-box"></div>
+<section class="tv-login-hero">
+  <div>
+    <h1>Đăng nhập TV</h1>
+    <p class="subtle">Trang riêng cho khách hàng được phép đăng nhập TV với trải nghiệm rõ ràng và dễ theo dõi.</p>
+    <ul class="tv-login-highlights">
+      <li>Chuẩn bị mật khẩu và mã TV 8 số hiển thị trên màn hình.</li>
+      <li>Hệ thống tự chọn email hợp lệ, bạn không cần nhập email thủ công.</li>
+      <li>Thông báo sẽ cập nhật theo từng bước: đăng nhập tài khoản và nhập mã TV.</li>
+    </ul>
+  </div>
+  <div class="tv-login-badge">
+    <span>TV Login</span>
+    <strong>Netflix</strong>
+    <small>Hỗ trợ nhanh chóng</small>
+  </div>
 </section>
 
+<section class="tv-login-grid">
+  <div class="card tv-login-card">
+    <div class="card-header">
+      <h2>Thông tin đăng nhập</h2>
+      <p class="subtle">Nhập đúng mật khẩu và mã TV để hệ thống xử lý đăng nhập.</p>
+    </div>
+    <form id="tvLoginPageForm" class="form-grid">
+      <label>Mật khẩu
+        <input name="tv_password" type="password" placeholder="Nhập mật khẩu" required>
+        <small>Ví dụ: mật khẩu bạn đang dùng trên Netflix.</small>
+      </label>
+      <label>Mã TV (8 số)
+        <input name="tv_code" inputmode="numeric" maxlength="8" pattern="\d{8}" placeholder="Nhập mã TV 8 số" required>
+        <small>Nhập đúng 8 chữ số đang hiển thị trên TV.</small>
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn-primary" id="tvLoginPageBtn">Đăng nhập TV</button>
+      </div>
+    </form>
+    <div id="tvStatusBox" class="result-box"></div>
+  </div>
+
+  <aside class="card tv-login-side">
+    <h3>Hướng dẫn nhanh</h3>
+    <ol class="tv-login-steps">
+      <li>Mở ứng dụng Netflix trên TV và lấy mã 8 số.</li>
+      <li>Nhập mật khẩu và mã TV vào form bên cạnh.</li>
+      <li>Chờ hệ thống báo trạng thái chi tiết theo từng bước.</li>
+    </ol>
+    <div class="tv-login-note">
+      <strong>Lưu ý:</strong>
+      Nếu có lỗi, hệ thống sẽ tự đổi sang tài khoản khác và thông báo lý do rõ ràng.
+    </div>
+  </aside>
+</section>
 {% endblock %}
