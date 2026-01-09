@@ -251,6 +251,19 @@ input:focus{
 .alert.warn   { border-color:#7a6400; background:#2a2300; }
 .alert.danger { border-color:#7a1d1d; background:#2a1014; }
 .alert .meta  { opacity:.8; }
+.status-title{
+  font-size:15px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.8px;
+  color:#b9c9f4;
+  margin-bottom:8px;
+}
+.status-summary{
+  font-size:16px;
+  font-weight:600;
+  color:#eaf0ff;
+}
 
 .alert a{
   color:#7fc3ff;
