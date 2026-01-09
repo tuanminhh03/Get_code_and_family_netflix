@@ -373,7 +373,8 @@ document.addEventListener('DOMContentLoaded', () => {
         warn: 'alert warn',
         danger: 'alert danger',
       }[state] || 'alert info';
-      tvStatusBox.innerHTML = `<div class="${cls}">${message}</div>`;
+      const title = state === 'success' ? 'Trạng thái đăng nhập' : 'Thông báo';
+      tvStatusBox.innerHTML = `<div class="${cls}"><div class="status-title">${title}</div>${message}</div>`;
     };
 
     const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
@@ -393,7 +394,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       setTvStatus(
-        buildStatusSteps(['Đang đăng nhập tài khoản...', 'Đang nhập TV...']),
+        `<div class="status-summary">Hệ thống đang xử lý đăng nhập TV.</div>${buildStatusSteps([
+          'Đang đăng nhập tài khoản...',
+          'Đang nhập TV...',
+        ])}`,
         'info'
       );
       tvLoginPageBtn?.setAttribute('disabled', 'disabled');
@@ -407,11 +411,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await resp.json();
         const ok = resp.ok && data?.success;
         const msg = data?.message || (ok ? 'Đăng nhập thành công.' : tvAccountIssueMessage);
-        const chosenEmail = data?.email;
-        const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
-        setTvStatus(detail, ok ? 'success' : 'warn');
+        setTvStatus(`<div class="status-summary">${msg}</div>`, ok ? 'success' : 'warn');
       } catch (err) {
-        setTvStatus('Lỗi khi gọi API đăng nhập TV.', 'danger');
+        setTvStatus('<div class="status-summary">Lỗi khi gọi API đăng nhập TV.</div>', 'danger');
       } finally {
         tvLoginPageBtn?.removeAttribute('disabled');
       }
