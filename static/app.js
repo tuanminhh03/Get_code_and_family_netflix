@@ -102,6 +102,16 @@ document.addEventListener('DOMContentLoaded', () => {
     resEl.innerHTML = `<div class="alert warn">⚠️ ${msg}</div>`;
   }
 
+  const buildStatusSteps = (steps = []) => {
+    const items = steps.filter(Boolean);
+    if (!items.length) return '';
+    return `<div class="status-steps-list">${items
+      .map((step) => `<div class="status-step"><span class="status-dot"></span>${step}</div>`)
+      .join('')}</div>`;
+  };
+
+  const tvAccountIssueMessage = 'Tài khoản đăng nhập TV có vấn đề, đang đổi qua tài khoản mới.';
+
   function showSuccessBlock({ code, link, time, content, kind }) {
     const showCode = kind !== 'verify_link' && code;
     const showLink = kind !== 'login_code' && link;
@@ -382,7 +392,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      setTvStatus('Đang xác minh quyền truy cập TV...', 'info');
+      setTvStatus(
+        buildStatusSteps(['Đang đăng nhập tài khoản...', 'Đang nhập TV...']),
+        'info'
+      );
       tvLoginPageBtn?.setAttribute('disabled', 'disabled');
 
       try {
@@ -393,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const data = await resp.json();
         const ok = resp.ok && data?.success;
-        const msg = data?.message || (ok ? 'Đăng nhập thành công.' : 'Không thể đăng nhập TV.');
+        const msg = data?.message || (ok ? 'Đăng nhập thành công.' : tvAccountIssueMessage);
         const chosenEmail = data?.email;
         const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
         setTvStatus(detail, ok ? 'success' : 'warn');
@@ -421,13 +434,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const attempts = Array.isArray(payload?.attempts) ? payload.attempts : [];
       const ok = !!payload?.success;
       const cls = ok ? 'alert success' : 'alert warn';
-      const summary = payload?.message || (ok ? 'Đăng nhập thành công.' : 'Không thể đăng nhập TV.');
+      const summary = payload?.message || (ok ? 'Đăng nhập thành công.' : tvAccountIssueMessage);
       const pool = Array.isArray(payload?.pool) ? payload.pool : [];
       const poolList = pool.map((p) => p.email).filter(Boolean).join(', ');
       const attemptsHtml = attempts
         .map((item, idx) => {
           const status = item.success ? '✅' : '⚠️';
-          const note = item.message || (item.success ? 'Thành công' : 'Thất bại');
+          const note = item.message || (item.success ? 'Thành công' : tvAccountIssueMessage);
           const email = item.email || payload?.email || '—';
           return `<div class="result-line"><strong>Lần ${idx + 1}:</strong> <span class="mono">${email}</span> — ${status} ${note}</div>`;
         })
@@ -452,7 +465,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      setStep('Đang đăng nhập tài khoản...', 'info');
+      setStep(
+        buildStatusSteps(['Đang đăng nhập tài khoản...', 'Đang nhập TV...']),
+        'info'
+      );
       btnLoginTv?.setAttribute('disabled', 'disabled');
 
       try {
@@ -464,7 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await resp.json();
 
         if (!resp.ok) {
-          setStep(data?.message || 'Không thể đăng nhập TV.', 'danger');
+          setStep(data?.message || tvAccountIssueMessage, 'danger');
           return;
         }
 

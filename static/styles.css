@@ -461,6 +461,25 @@ label small::before{
 .tag-fail{ color:#ff7b7b; }
 
 .status-steps{ margin-top:16px; }
+.status-steps-list{
+  display:grid;
+  gap:8px;
+  margin-top:8px;
+}
+.status-step{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:600;
+}
+.status-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:var(--primary);
+  box-shadow:0 0 0 4px rgba(91,140,255,0.2);
+  flex-shrink:0;
+}
 
 @keyframes pop{
   from{ transform:scale(.96); opacity:0; }
@@ -477,10 +496,43 @@ label small::before{
   align-items:flex-end;
   gap:16px;
   margin-bottom:18px;
+  padding:22px 26px;
+  border-radius:20px;
+  border:1px solid var(--border);
+  background:
+    radial-gradient(400px 220px at 12% 0%, rgba(91,140,255,0.12), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,.03), transparent),
+    linear-gradient(180deg, var(--card), var(--card-2));
+  box-shadow: var(--shadow);
 }
 .admin-hero .subtle{ margin-bottom:0; }
+.admin-hero-title{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.admin-hero-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:46px;
+  height:46px;
+  border-radius:14px;
+  background:rgba(91,140,255,0.16);
+  border:1px solid rgba(91,140,255,0.35);
+  font-size:20px;
+}
+.admin-hero-main{
+  flex:1 1 280px;
+}
+.admin-hero-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
 .admin-login{
   max-width:520px;
+  margin:0 auto;
 }
 .stack > * + *{
   margin-top:22px;
@@ -489,6 +541,7 @@ label small::before{
   display:grid;
   gap:22px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items:start;
 }
 .admin-stats .mini-card{
   padding:20px;

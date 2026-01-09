@@ -1,14 +1,21 @@
 {% extends 'base.html' %}
 {% block content %}
 <header class="admin-hero">
-  <div>
-    <h1>Trang quản trị</h1>
-    <p class="subtle">Giám sát khách hàng, hạn sử dụng và quyền truy cập hệ thống.</p>
+  <div class="admin-hero-main">
+    <div class="admin-hero-title">
+      <span class="admin-hero-icon">🛠️</span>
+      <div>
+        <h1>Trang quản trị</h1>
+        <p class="subtle">Giám sát khách hàng, hạn sử dụng và quyền truy cập hệ thống.</p>
+      </div>
+    </div>
   </div>
   {% if session.get('is_admin') %}
-    <form method="post" action="{{ url_for('admin_logout') }}">
-      <button type="submit" class="btn-secondary">Đăng xuất</button>
-    </form>
+    <div class="admin-hero-actions">
+      <form method="post" action="{{ url_for('admin_logout') }}">
+        <button type="submit" class="btn-secondary">Đăng xuất</button>
+      </form>
+    </div>
   {% endif %}
 </header>
 
