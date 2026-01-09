@@ -747,6 +747,9 @@ label small::before{
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   align-items:start;
 }
+.section-grid .tv-email-card{
+  grid-column:1 / -1;
+}
 .admin-stats .mini-card{
   padding:20px;
 }
