@@ -47,6 +47,7 @@ def ensure_database():
     db.create_all()
     _ensure_email_nullable()
     _ensure_tv_allowed_column()
+    _ensure_tv_login_email_notes_column()
 
 
 def _ensure_email_nullable():
@@ -113,6 +114,23 @@ def _ensure_tv_allowed_column():
         print(f"[DB] Không thể thêm cột tv_allowed cho bảng {table_name}", flush=True)
 
 
+def _ensure_tv_login_email_notes_column():
+    try:
+        result = db.session.execute(text("PRAGMA table_info(tv_login_email)")).fetchall()
+    except Exception:
+        return
+
+    has_column = any(row[1] == "notes" for row in result)
+    if has_column:
+        return
+
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE tv_login_email ADD COLUMN notes TEXT"))
+    except Exception:
+        print("[DB] Không thể thêm cột notes cho bảng tv_login_email", flush=True)
+
+
 def _parse_timestamp_candidates(ts_raw: str):
     if not ts_raw:
         return "", ""
@@ -169,6 +187,7 @@ class TvLoginEmail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
     last_used_at = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     @property
@@ -242,6 +261,23 @@ def _is_tv_login_failed(customer: Customer | None):
         return False
     notes = (customer.notes or "").lower()
     return TV_LOGIN_FAILURE_MARKER.lower() in notes
+
+
+def _is_tv_login_failed_record(record: TvLoginEmail | None) -> bool:
+    if not record:
+        return False
+    notes = (record.notes or "").lower()
+    return TV_LOGIN_FAILURE_MARKER.lower() in notes
+
+
+def _append_marker_note(existing_notes: str | None, *, marker: str, note: str = "") -> str:
+    base = existing_notes or ""
+    if marker.lower() in base.lower():
+        return base
+    appended = f"{base} | {marker}".strip(" |")
+    if note:
+        appended = f"{appended} - {note}"
+    return appended
 
 
 def _strip_tv_markers(notes: str | None) -> str:
@@ -506,7 +542,7 @@ def _pick_next_tv_login_email(explicit_email: str | None = None):
     customer_map = _find_customers_by_emails([row.email for row in candidate])
     for row in candidate:
         customer = customer_map.get(_normalize_email(row.email))
-        if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer):
+        if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer) or _is_tv_login_failed_record(row):
             continue
         row.last_used_at = datetime.now(timezone.utc)
         db.session.commit()
@@ -533,14 +569,14 @@ def _list_tv_login_emails():
 
     customer_map = _find_customers_by_emails([row.email for row in rows])
 
-    def _tv_email_status(email: str):
-        customer = customer_map.get(_normalize_email(email))
-        if not customer:
-            return ""
+    def _tv_email_status(row: TvLoginEmail):
+        customer = customer_map.get(_normalize_email(row.email))
         statuses = []
-        if _is_tv_remote_flagged(customer):
+        if customer and _is_tv_remote_flagged(customer):
             statuses.append("Yêu cầu đăng nhập bằng điều khiển TV")
-        if _is_tv_login_failed(customer):
+        if customer and _is_tv_login_failed(customer):
+            statuses.append(TV_LOGIN_FAILURE_NOTE)
+        if _is_tv_login_failed_record(row) and TV_LOGIN_FAILURE_NOTE not in statuses:
             statuses.append(TV_LOGIN_FAILURE_NOTE)
         return " | ".join(statuses)
 
@@ -550,7 +586,7 @@ def _list_tv_login_emails():
             "email": row.email,
             "last_used": row.last_used_display,
             "created_at": _format_local_time(row.created_at),
-            "status": _tv_email_status(row.email),
+            "status": _tv_email_status(row),
         }
         for row in rows
     ]
@@ -578,7 +614,7 @@ def _get_tv_login_records(limit: int | None = None, *, exclude_flagged: bool = F
         filtered = []
         for row in records:
             customer = customer_map.get(_normalize_email(row.email))
-            if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer):
+            if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer) or _is_tv_login_failed_record(row):
                 continue
             filtered.append(row)
         return filtered
@@ -610,22 +646,17 @@ def _flag_tv_login_issue(
 
     try:
         customer = Customer.query.filter(func.lower(Customer.email) == normalized).first()
-        rotation_record = None
-        if remove_from_rotation:
-            rotation_record = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == normalized).first()
+        rotation_record = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == normalized).first()
 
         if customer:
-            existing_notes = customer.notes or ""
-            if marker.lower() not in existing_notes.lower():
-                appended = f"{existing_notes} | {marker}".strip(" |")
-                if note:
-                    appended = f"{appended} - {note}"
-                customer.notes = appended
+            customer.notes = _append_marker_note(customer.notes, marker=marker, note=note)
             if disable_tv_allowed:
                 customer.tv_allowed = False
 
-        if rotation_record and remove_from_rotation:
-            db.session.delete(rotation_record)
+        if rotation_record:
+            rotation_record.notes = _append_marker_note(rotation_record.notes, marker=marker, note=note)
+            if remove_from_rotation:
+                db.session.delete(rotation_record)
 
         if customer or rotation_record:
             db.session.commit()
@@ -639,7 +670,7 @@ def _flag_tv_login_failure(email: str | None):
         marker=TV_LOGIN_FAILURE_MARKER,
         note=TV_LOGIN_FAILURE_NOTE,
         disable_tv_allowed=True,
-        remove_from_rotation=True,
+        remove_from_rotation=False,
     )
 
 
