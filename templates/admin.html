@@ -169,9 +169,11 @@
             {% if tv_emails %}
               {% for item in tv_emails %}
                 <div class="tv-email-item">
-                  <div class="tv-email-main">
-                    <div class="tv-email-label">Email đăng nhập TV</div>
-                    <div class="tv-email-value mono">{{ item.email }}</div>
+                  <div class="tv-email-top">
+                    <div>
+                      <div class="tv-email-label">Email đăng nhập TV</div>
+                      <div class="tv-email-value mono">{{ item.email }}</div>
+                    </div>
                     <div class="tv-email-actions">
                       <form method="post" action="{{ url_for('admin_tv_emails') }}" onsubmit="return confirm('Xóa email này khỏi danh sách đăng nhập TV?');">
                         <input type="hidden" name="action" value="delete">
