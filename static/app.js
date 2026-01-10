@@ -340,6 +340,49 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshBulkDeleteState();
   }
 
+  const tvEmailBulkForm = document.getElementById('tvEmailBulkForm');
+  const tvEmailSelectAll = document.getElementById('tvEmailSelectAll');
+  const tvEmailBulkDeleteBtn = document.getElementById('tvEmailBulkDeleteBtn');
+  const tvEmailCheckboxes = tvEmailBulkForm
+    ? Array.from(document.querySelectorAll('.tv-email-checkbox'))
+    : [];
+
+  function refreshTvEmailBulkState() {
+    if (!tvEmailBulkDeleteBtn) return;
+    const checkedCount = tvEmailCheckboxes.filter((cb) => cb.checked).length;
+    tvEmailBulkDeleteBtn.disabled = checkedCount === 0;
+    if (tvEmailSelectAll) {
+      const allChecked = tvEmailCheckboxes.length > 0 && checkedCount === tvEmailCheckboxes.length;
+      tvEmailSelectAll.checked = allChecked;
+      const someChecked = checkedCount > 0 && checkedCount < tvEmailCheckboxes.length;
+      tvEmailSelectAll.indeterminate = someChecked;
+    }
+  }
+
+  if (tvEmailBulkForm) {
+    tvEmailSelectAll?.addEventListener('change', () => {
+      tvEmailCheckboxes.forEach((cb) => {
+        cb.checked = !!tvEmailSelectAll.checked;
+      });
+      refreshTvEmailBulkState();
+    });
+
+    tvEmailCheckboxes.forEach((cb) => cb.addEventListener('change', refreshTvEmailBulkState));
+
+    tvEmailBulkForm.addEventListener('submit', (e) => {
+      const hasSelection = tvEmailCheckboxes.some((cb) => cb.checked);
+      if (!hasSelection) {
+        e.preventDefault();
+        return;
+      }
+      if (!confirm('Xóa các email đăng nhập TV đã chọn?')) {
+        e.preventDefault();
+      }
+    });
+
+    refreshTvEmailBulkState();
+  }
+
   const emailCopySpans = document.querySelectorAll('.email-copy[data-copy-email]');
   function copyEmailValue(el) {
     const value = el?.dataset?.copyEmail || el?.textContent?.trim();
