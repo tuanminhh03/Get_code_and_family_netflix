@@ -29,6 +29,7 @@ db = SQLAlchemy(app)
 TV_REMOTE_NOTE_MARKER = "[TV-REMOTE]"
 TV_LOGIN_FAILURE_MARKER = "[TV-LOGIN-FAILED]"
 TV_LOGIN_FAILURE_NOTE = "Không đăng nhập được TV."
+TV_SEED_DISABLED_KEY = "tv_login_seed_disabled"
 
 
 def _customer_table_name():
@@ -195,6 +196,31 @@ class TvLoginEmail(db.Model):
         if not self.last_used_at:
             return "Chưa sử dụng"
         return _format_local_time(self.last_used_at)
+
+
+class AppSetting(db.Model):
+    key = db.Column(db.String(120), primary_key=True)
+    value = db.Column(db.Text, nullable=True)
+
+
+def _get_app_setting(key: str) -> str | None:
+    try:
+        record = AppSetting.query.filter_by(key=key).first()
+    except Exception:
+        return None
+    return record.value if record else None
+
+
+def _set_app_setting(key: str, value: str | None) -> None:
+    try:
+        record = AppSetting.query.filter_by(key=key).first()
+        if record:
+            record.value = value
+        else:
+            db.session.add(AppSetting(key=key, value=value))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def _parse_date(value: str):
@@ -478,6 +504,8 @@ def _get_tv_candidates(limit: int = 3, today: date | None = None):
 
 def _seed_tv_login_emails():
     """Đưa danh sách email trong account.txt vào bảng quay vòng nếu bảng đang trống."""
+    if _get_app_setting(TV_SEED_DISABLED_KEY):
+        return
     try:
         existing = TvLoginEmail.query.count()
     except Exception:
@@ -1392,6 +1420,97 @@ def admin_tv_emails():
         db.session.delete(record)
         db.session.commit()
         flash('Đã xóa email khỏi danh sách đăng nhập TV.', 'success')
+        return redirect(next_url)
+
+    if action == 'bulk_delete':
+        raw_ids = request.form.getlist('email_ids')
+        try:
+            ids = [int(val) for val in raw_ids]
+        except (TypeError, ValueError):
+            ids = []
+
+        if not ids:
+            flash('Vui lòng chọn ít nhất một email để xóa.', 'warning')
+            return redirect(next_url)
+
+        records = TvLoginEmail.query.filter(TvLoginEmail.id.in_(ids)).all()
+        if not records:
+            flash('Không tìm thấy email cần xóa.', 'warning')
+            return redirect(next_url)
+
+        for record in records:
+            db.session.delete(record)
+
+        db.session.commit()
+        flash(f'Đã xóa {len(records)} email đăng nhập TV.', 'success')
+        return redirect(next_url)
+
+    if action == 'delete_all':
+        total = TvLoginEmail.query.count()
+        if total == 0:
+            flash('Danh sách email đăng nhập TV đang trống.', 'warning')
+            return redirect(next_url)
+
+        TvLoginEmail.query.delete(synchronize_session=False)
+        db.session.commit()
+        _set_app_setting(TV_SEED_DISABLED_KEY, "1")
+        flash(f'Đã xóa toàn bộ {total} email đăng nhập TV.', 'success')
+        return redirect(next_url)
+
+    if action == 'import':
+        file = request.files.get('email_file')
+        if not file or not file.filename:
+            flash('Vui lòng chọn tệp .txt để import.', 'danger')
+            return redirect(next_url)
+
+        try:
+            content = file.read().decode('utf-8')
+        except UnicodeDecodeError:
+            flash('Tệp phải sử dụng mã hóa UTF-8.', 'danger')
+            return redirect(next_url)
+
+        email_pattern = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+        added = 0
+        skipped = 0
+        invalid = 0
+        seen = set()
+
+        for line in content.splitlines():
+            candidate = _normalize_email(line)
+            if not candidate or candidate in seen:
+                if candidate:
+                    skipped += 1
+                continue
+
+            seen.add(candidate)
+
+            if not email_pattern.match(candidate):
+                invalid += 1
+                continue
+
+            exists = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == candidate).first()
+            if exists:
+                skipped += 1
+                continue
+
+            db.session.add(TvLoginEmail(email=candidate))
+            added += 1
+
+        if added:
+            db.session.commit()
+        else:
+            db.session.rollback()
+
+        message_parts = []
+        if added:
+            message_parts.append(f'thêm {added} email mới')
+        if skipped:
+            message_parts.append(f'bỏ qua {skipped} email trùng')
+        if invalid:
+            message_parts.append(f'{invalid} dòng không hợp lệ')
+
+        summary = '; '.join(message_parts) if message_parts else 'Không có email hợp lệ để import.'
+        flash(f'Import email đăng nhập TV hoàn tất: {summary}.', 'info' if added else 'warning')
         return redirect(next_url)
 
     flash('Hành động không hợp lệ.', 'danger')
