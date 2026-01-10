@@ -29,6 +29,7 @@ db = SQLAlchemy(app)
 TV_REMOTE_NOTE_MARKER = "[TV-REMOTE]"
 TV_LOGIN_FAILURE_MARKER = "[TV-LOGIN-FAILED]"
 TV_LOGIN_FAILURE_NOTE = "Không đăng nhập được TV."
+TV_SEED_DISABLED_KEY = "tv_login_seed_disabled"
 
 
 def _customer_table_name():
@@ -195,6 +196,31 @@ class TvLoginEmail(db.Model):
         if not self.last_used_at:
             return "Chưa sử dụng"
         return _format_local_time(self.last_used_at)
+
+
+class AppSetting(db.Model):
+    key = db.Column(db.String(120), primary_key=True)
+    value = db.Column(db.Text, nullable=True)
+
+
+def _get_app_setting(key: str) -> str | None:
+    try:
+        record = AppSetting.query.filter_by(key=key).first()
+    except Exception:
+        return None
+    return record.value if record else None
+
+
+def _set_app_setting(key: str, value: str | None) -> None:
+    try:
+        record = AppSetting.query.filter_by(key=key).first()
+        if record:
+            record.value = value
+        else:
+            db.session.add(AppSetting(key=key, value=value))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def _parse_date(value: str):
@@ -478,6 +504,8 @@ def _get_tv_candidates(limit: int = 3, today: date | None = None):
 
 def _seed_tv_login_emails():
     """Đưa danh sách email trong account.txt vào bảng quay vòng nếu bảng đang trống."""
+    if _get_app_setting(TV_SEED_DISABLED_KEY):
+        return
     try:
         existing = TvLoginEmail.query.count()
     except Exception:
@@ -1425,8 +1453,13 @@ def admin_tv_emails():
 
         TvLoginEmail.query.delete(synchronize_session=False)
         db.session.commit()
+
+        # Nếu xoá toàn bộ thì tắt seed từ account.txt để danh sách không tự add lại
+        _set_app_setting(TV_SEED_DISABLED_KEY, "1")
+
         flash(f'Đã xóa toàn bộ {total} email đăng nhập TV.', 'success')
         return redirect(next_url)
+
 
     if action == 'import':
         file = request.files.get('email_file')
