@@ -1453,9 +1453,13 @@ def admin_tv_emails():
 
         TvLoginEmail.query.delete(synchronize_session=False)
         db.session.commit()
+
+        # Nếu xoá toàn bộ thì tắt seed từ account.txt để danh sách không tự add lại
         _set_app_setting(TV_SEED_DISABLED_KEY, "1")
+
         flash(f'Đã xóa toàn bộ {total} email đăng nhập TV.', 'success')
         return redirect(next_url)
+
 
     if action == 'import':
         file = request.files.get('email_file')
