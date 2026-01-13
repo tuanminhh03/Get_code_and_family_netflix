@@ -450,8 +450,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const data = await resp.json();
         const ok = resp.ok && data?.success;
-        const successMessage = ok ? 'Đăng nhập thành công.' : 'Mã bạn nhập không đúng vui lòng thử lại';
-        setTvStatus(`<div class="status-summary">${successMessage}</div>`, ok ? 'success' : 'warn');
+        const statusMessage = ok ? 'Đăng nhập thành công.' : (data?.message || 'Mã bạn nhập không đúng vui lòng thử lại');
+        setTvStatus(`<div class="status-summary">${statusMessage}</div>`, ok ? 'success' : 'warn');
       } catch (err) {
         setTvStatus('<div class="status-summary">Lỗi khi gọi API đăng nhập TV.</div>', 'danger');
       } finally {
