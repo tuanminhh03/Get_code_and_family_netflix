@@ -270,6 +270,24 @@
     <div class="card">
       <div class="card-header">
         <div>
+          <h2>Mật khẩu TV</h2>
+          <p class="subtle">Cấu hình mật khẩu dùng cho trang /tv (khách tự nhập khi đăng nhập TV).</p>
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('admin_tv_password') }}" class="form-grid">
+        <label>Mật khẩu TV
+          <input name="tv_password" type="password" placeholder="Nhập mật khẩu TV" required>
+          <small>Trạng thái: {{ 'Đã cấu hình' if tv_password_configured else 'Chưa cấu hình' }}.</small>
+        </label>
+        <div class="actions">
+          <button type="submit" class="btn-primary">Lưu mật khẩu TV</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
           <h2>Đăng nhập TV</h2>
           <p class="subtle">Nhập mật khẩu + mã 8 số, theo dõi tiến trình ngay bên dưới.</p>
         </div>
