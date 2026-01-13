@@ -23,4 +23,4 @@ def _as_bool(value: str | None, default: bool = True) -> bool:
 
 # Bật headless mặc định để tránh lỗi khi môi trường không có UI/Chrome.
 # Nếu muốn xem trình duyệt, đặt TUKI_HEADLESS=0 hoặc "false".
-TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=True)
+TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=False)
