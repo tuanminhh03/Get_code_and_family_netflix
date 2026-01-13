@@ -33,6 +33,7 @@ TV_SEED_DISABLED_KEY = "tv_login_seed_disabled"
 TV_PASSWORD_KEY = "tv_password"
 
 
+
 def _customer_table_name():
     try:
         inspector = inspect(db.engine)
@@ -229,6 +230,7 @@ def _get_tv_password_setting() -> str:
     if stored and stored.strip():
         return stored.strip()
     return str(getattr(config, "TV_PASSWORD", "") or os.getenv("TV_PASSWORD") or "").strip()
+
 
 
 def _parse_date(value: str):
@@ -768,7 +770,8 @@ def _login_tv(password: str, code: str, email: str | None = None):
             return {"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}
         chosen_email = record.email
 
-    result = run_login_tv(password=password, code=code, email=chosen_email, expected_password=expected_password)
+result = run_login_tv(password=password, code=code, email=chosen_email, expected_password=expected_password)
+
 
     # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
     if isinstance(result, dict):
@@ -1431,7 +1434,6 @@ def admin_tv_password():
     _set_app_setting(TV_PASSWORD_KEY, password)
     flash('Đã lưu mật khẩu đăng nhập TV.', 'success')
     return redirect(url_for('admin'))
-
 
 @app.route('/admin/tv-emails', methods=['POST'])
 def admin_tv_emails():
