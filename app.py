@@ -223,6 +223,8 @@ def _set_app_setting(key: str, value: str | None) -> None:
         db.session.rollback()
 
 
+
+
 def _parse_date(value: str):
     if not value:
         return None
@@ -1008,7 +1010,6 @@ def admin():
     next_url = request.full_path.rstrip('?')
     tv_login_emails = _list_tv_login_emails()
     tv_email_summary = _get_tv_login_summary()
-
     return render_template(
         'admin.html',
         customers=customers_view,
