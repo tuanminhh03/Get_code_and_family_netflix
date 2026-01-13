@@ -753,6 +753,29 @@ label small::before{
   box-shadow:0 0 0 4px rgba(91,140,255,0.2);
   flex-shrink:0;
 }
+.status-log{
+  margin-top:14px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:#0b142d;
+  font-family:'JetBrains Mono', 'Fira Code', 'SFMono-Regular', ui-monospace, monospace;
+  font-size:13px;
+  line-height:1.5;
+  color:var(--text);
+}
+.status-log-line{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.status-log-subline{
+  margin-left:18px;
+  color:var(--muted);
+}
 
 @keyframes pop{
   from{ transform:scale(.96); opacity:0; }

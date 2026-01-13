@@ -420,6 +420,26 @@ document.addEventListener('DOMContentLoaded', () => {
       tvStatusBox.innerHTML = `<div class="${cls}"><div class="status-title">${title}</div>${message}</div>`;
     };
 
+    const buildTvAttemptLog = (attempts = []) => {
+      if (!Array.isArray(attempts) || attempts.length === 0) return '';
+      const lines = attempts
+        .map((attempt, idx) => {
+          const email = attempt?.email || '—';
+          const message = attempt?.message || '';
+          const steps = Array.isArray(attempt?.steps) ? attempt.steps : [];
+          const header = `<div class="status-log-line"><span class="mono">[${idx + 1}]</span> ${escapeHtml(email)} — ${escapeHtml(message)}</div>`;
+          if (!steps.length) {
+            return header;
+          }
+          const stepLines = steps
+            .map((step) => `<div class="status-log-subline">↳ ${escapeHtml(step)}</div>`)
+            .join('');
+          return `${header}${stepLines}`;
+        })
+        .join('');
+      return `<div class="status-log">${lines}</div>`;
+    };
+
     const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
 
     tvLoginPageForm.addEventListener('submit', async (e) => {
@@ -437,10 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       setTvStatus(
-        `<div class="status-summary">Hệ thống đang xử lý đăng nhập TV.</div>${buildStatusSteps([
-          'Đang đăng nhập tài khoản...',
-          'Đang nhập TV...',
-        ])}`,
+        `<div class="status-summary">Hệ thống đang xử lý đăng nhập TV, vui lòng chờ...</div>`,
         'info'
       );
       tvLoginPageBtn?.setAttribute('disabled', 'disabled');
@@ -458,8 +475,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // merged: show message + append chosen email if backend returns it
         const chosenEmail = data?.email;
         const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
+        const attemptsLog = buildTvAttemptLog(data?.attempts);
 
-        setTvStatus(`<div class="status-summary">${detail}</div>`, ok ? 'success' : 'warn');
+        setTvStatus(
+          `<div class="status-summary">${detail}</div>${attemptsLog}`,
+          ok ? 'success' : 'warn'
+        );
 
       } catch (err) {
         setTvStatus('<div class="status-summary">Lỗi khi gọi API đăng nhập TV.</div>', 'danger');

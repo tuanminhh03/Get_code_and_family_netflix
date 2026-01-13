@@ -1024,9 +1024,11 @@ def api_login_tv():
         if isinstance(result, dict):
             success = bool(result.get("success"))
             message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+            steps = result.get("steps") if isinstance(result.get("steps"), list) else []
         else:
             success = bool(result)
             message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
+            steps = []
 
         password_error = "mật khẩu" in message.lower()
         invalid_code = _is_invalid_tv_code_message(message)
@@ -1133,16 +1135,18 @@ def api_tv_login():
         if isinstance(result, dict):
             success = bool(result.get("success"))
             message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+            steps = result.get("steps") if isinstance(result.get("steps"), list) else []
         else:
             success = bool(result)
             message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
+            steps = []
 
         invalid_code = _is_invalid_tv_code_message(message)
         remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
         attempt_message = (
             "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này." if remote_required else message
         )
-        attempts.append({"email": customer.email, "success": success, "message": attempt_message})
+        attempts.append({"email": customer.email, "success": success, "message": attempt_message, "steps": steps})
         final_raw = result
 
         if not success and not invalid_code and not remote_required and "mật khẩu" not in message.lower():
@@ -1199,6 +1203,7 @@ def api_tv_login():
                 "success": status_code == 200,
                 "message": final_message,
                 "email": final_email,
+                "attempts": attempts,
                 "attempted_emails": [item["email"] for item in attempts],
                 "raw": final_raw,
             }
