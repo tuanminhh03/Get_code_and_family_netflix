@@ -448,6 +448,34 @@ label small::before{
   display:grid;
   gap:16px;
 }
+.tv-email-summary{
+  margin-top:18px;
+  padding:14px 16px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,0.08);
+  background:rgba(8,14,30,0.7);
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap:12px;
+}
+.tv-email-summary-item{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  padding:10px 12px;
+  border-radius:12px;
+  background:rgba(255,255,255,0.03);
+}
+.tv-email-summary-label{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:0.6px;
+  color:var(--muted);
+}
+.tv-email-summary-value{
+  font-size:20px;
+  color:#e8f0ff;
+}
 .tv-email-forms{
   display:grid;
   gap:18px;

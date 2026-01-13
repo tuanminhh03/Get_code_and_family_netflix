@@ -245,6 +245,24 @@
               <div class="empty-state">Chưa có email nào trong danh sách.</div>
             {% endif %}
           </div>
+          <div class="tv-email-summary">
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">Tài khoản có sẵn</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.total }}</strong>
+            </div>
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">Logged</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.logged }}</strong>
+            </div>
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">Không đăng nhập được</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.failed }}</strong>
+            </div>
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">Còn lại</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.remaining }}</strong>
+            </div>
+          </div>
         </div>
       </details>
     </section>

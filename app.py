@@ -620,6 +620,31 @@ def _list_tv_login_emails():
     ]
 
 
+def _get_tv_login_summary() -> dict:
+    ensure_database()
+    _seed_tv_login_emails()
+    try:
+        rows = (
+            TvLoginEmail.query.filter(TvLoginEmail.email.isnot(None), TvLoginEmail.email != "")
+            .order_by(TvLoginEmail.created_at.asc())
+            .all()
+        )
+    except Exception:
+        return {"total": 0, "logged": 0, "failed": 0, "remaining": 0}
+
+    total = len(rows)
+    logged = sum(1 for row in rows if row.last_used_at)
+    customer_map = _find_customers_by_emails([row.email for row in rows])
+    failed = 0
+    for row in rows:
+        customer = customer_map.get(_normalize_email(row.email))
+        if _is_tv_login_failed_record(row) or _is_tv_login_failed(customer):
+            failed += 1
+
+    remaining = max(total - logged - failed, 0)
+    return {"total": total, "logged": logged, "failed": failed, "remaining": remaining}
+
+
 def _get_tv_login_records(limit: int | None = None, *, exclude_flagged: bool = False):
     ensure_database()
     _seed_tv_login_emails()
@@ -720,6 +745,8 @@ def _login_tv(password: str, code: str, email: str | None = None):
     """Ủy quyền sang module logintv để dùng chung fallback/validation."""
 
     expected_password = str(getattr(config, "TV_PASSWORD", "") or os.getenv("TV_PASSWORD") or "").strip()
+    if not expected_password:
+        return {"success": False, "message": "Chưa cấu hình mật khẩu đăng nhập TV."}
     if expected_password and password != expected_password:
         return {"success": False, "message": "Sai mật khẩu đăng nhập TV."}
 
@@ -980,6 +1007,7 @@ def admin():
 
     next_url = request.full_path.rstrip('?')
     tv_login_emails = _list_tv_login_emails()
+    tv_email_summary = _get_tv_login_summary()
 
     return render_template(
         'admin.html',
@@ -991,6 +1019,7 @@ def admin():
         recent_activities=recent_activities,
         next_url=next_url,
         tv_emails=tv_login_emails,
+        tv_email_summary=tv_email_summary,
     )
 
 
