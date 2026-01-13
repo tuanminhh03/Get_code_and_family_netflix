@@ -420,26 +420,6 @@ document.addEventListener('DOMContentLoaded', () => {
       tvStatusBox.innerHTML = `<div class="${cls}"><div class="status-title">${title}</div>${message}</div>`;
     };
 
-    const buildTvAttemptLog = (attempts = []) => {
-      if (!Array.isArray(attempts) || attempts.length === 0) return '';
-      const lines = attempts
-        .map((attempt, idx) => {
-          const email = attempt?.email || '—';
-          const message = attempt?.message || '';
-          const steps = Array.isArray(attempt?.steps) ? attempt.steps : [];
-          const header = `<div class="status-log-line"><span class="mono">[${idx + 1}]</span> ${escapeHtml(email)} — ${escapeHtml(message)}</div>`;
-          if (!steps.length) {
-            return header;
-          }
-          const stepLines = steps
-            .map((step) => `<div class="status-log-subline">↳ ${escapeHtml(step)}</div>`)
-            .join('');
-          return `${header}${stepLines}`;
-        })
-        .join('');
-      return `<div class="status-log">${lines}</div>`;
-    };
-
     const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
 
       tvLoginPageForm.addEventListener('submit', async (e) => {
@@ -470,16 +450,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const data = await resp.json();
         const ok = resp.ok && data?.success;
-        const msg = data?.message || (ok ? 'Đăng nhập thành công.' : tvAccountIssueMessage);
-
-        const chosenEmail = data?.email;
-        const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
-        const attemptsLog = buildTvAttemptLog(data?.attempts);
-
-        setTvStatus(
-          `<div class="status-summary">${detail}</div>${attemptsLog}`,
-          ok ? 'success' : 'warn'
-        );
+        const successMessage = ok ? 'Đăng nhập thành công.' : 'Mã bạn nhập không đúng vui lòng thử lại';
+        setTvStatus(`<div class="status-summary">${successMessage}</div>`, ok ? 'success' : 'warn');
       } catch (err) {
         setTvStatus('<div class="status-summary">Lỗi khi gọi API đăng nhập TV.</div>', 'danger');
       } finally {
