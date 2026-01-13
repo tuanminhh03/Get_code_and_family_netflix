@@ -1033,7 +1033,7 @@ def api_login_tv():
         if invalid_code:
             invalid_code_seen = True
             final_email = record.email
-            final_message = "Mã bạn nhập sai vui lòng nhập lại."
+            final_message = "Mã bạn nhập sai vui lòng nhập lại"
             status_code = 400
             break
 
@@ -1149,7 +1149,7 @@ def api_tv_login():
         if invalid_code:
             status_code = 400
             final_email = customer.email
-            final_message = "Mã bạn nhập sai vui lòng nhập lại."
+            final_message = "Mã bạn nhập sai vui lòng nhập lại"
             break
 
     if status_code != 200:

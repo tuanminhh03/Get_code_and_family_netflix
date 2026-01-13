@@ -441,21 +441,31 @@ label small::before{
   gap:16px;
 }
 .tv-email-item{
+  position:relative;
   display:grid;
-  grid-template-columns:minmax(220px, 1fr) minmax(240px, 1.2fr);
-  gap:18px;
-  padding:16px;
-  border-radius:16px;
+  gap:14px;
+  padding:18px 18px 16px;
+  border-radius:18px;
   border:1px solid rgba(255,255,255,0.08);
-  background:linear-gradient(135deg, rgba(25,38,70,0.9), rgba(13,22,40,0.9));
+  background:
+    radial-gradient(260px 140px at 8% 10%, rgba(91,140,255,0.16), transparent 60%),
+    linear-gradient(135deg, rgba(25,38,70,0.92), rgba(13,22,40,0.92));
+  box-shadow:0 12px 22px rgba(5,10,22,0.35);
 }
-.tv-email-main{
-  display:grid;
-  gap:10px;
-  padding:12px 14px;
-  border-radius:12px;
-  background:rgba(15,26,51,0.8);
-  border:1px solid rgba(255,255,255,0.08);
+.tv-email-item::before{
+  content:"";
+  position:absolute;
+  inset:14px auto 14px 0;
+  width:3px;
+  border-radius:999px;
+  background:linear-gradient(180deg, rgba(91,140,255,0.85), rgba(91,140,255,0));
+  opacity:0.8;
+}
+.tv-email-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
 }
 .tv-email-label{
   font-size:12px;
@@ -469,20 +479,22 @@ label small::before{
 }
 .tv-email-actions{
   display:flex;
-  justify-content:flex-start;
+  justify-content:flex-end;
 }
 .tv-email-meta{
   display:grid;
-  gap:10px;
-  padding:12px 14px;
-  border-radius:12px;
-  border:1px dashed rgba(255,255,255,0.12);
-  background:rgba(10,18,35,0.7);
+  grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+  gap:12px;
+  padding:12px 6px 4px;
 }
 .tv-email-meta-item{
   display:flex;
   flex-direction:column;
-  gap:4px;
+  gap:6px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px dashed rgba(255,255,255,0.12);
+  background:rgba(10,18,35,0.6);
 }
 .tv-email-meta-label{
   font-size:12px;
@@ -746,6 +758,9 @@ label small::before{
   gap:22px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   align-items:start;
+}
+.section-grid .tv-email-card{
+  grid-column:1 / -1;
 }
 .admin-stats .mini-card{
   padding:20px;

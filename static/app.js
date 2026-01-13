@@ -412,11 +412,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const ok = resp.ok && data?.success;
         const msg = data?.message || (ok ? 'Đăng nhập thành công.' : tvAccountIssueMessage);
 
-        // merged: show message + append chosen email if backend returns it
-        const chosenEmail = data?.email;
-        const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
-
-        setTvStatus(`<div class="status-summary">${detail}</div>`, ok ? 'success' : 'warn');
+        // Show backend message only.
+        setTvStatus(`<div class="status-summary">${msg}</div>`, ok ? 'success' : 'warn');
 
       } catch (err) {
         setTvStatus('<div class="status-summary">Lỗi khi gọi API đăng nhập TV.</div>', 'danger');

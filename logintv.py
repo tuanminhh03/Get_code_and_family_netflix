@@ -137,7 +137,7 @@ def enter_tv_code(driver, wait, tv_code):
                     print(f" -> Thông báo lỗi trên trang TV: {raw_text}")
                     lowered = raw_text.lower()
                     if "không đúng" in lowered or "nhập sai" in lowered:
-                        msg_text = "Mã bạn nhập sai vui lòng nhập lại."
+                        msg_text = "Mã bạn nhập sai vui lòng nhập lại"
                     else:
                         msg_text = raw_text
             except TimeoutException:
