@@ -155,25 +155,66 @@
           <span class="collapse-indicator">Nhấn để mở</span>
         </summary>
         <div class="collapsible-body">
-          <form method="post" action="{{ url_for('admin_tv_emails') }}" class="form-grid">
-            <input type="hidden" name="action" value="add">
-            <input type="hidden" name="next" value="{{ next_url }}">
-            <label>Email đăng nhập TV
-              <input name="email" type="email" placeholder="email@domain.com" required>
+          <div class="tv-email-forms">
+            <form method="post" action="{{ url_for('admin_tv_emails') }}" class="form-grid">
+              <input type="hidden" name="action" value="add">
+              <input type="hidden" name="next" value="{{ next_url }}">
+              <label>Email đăng nhập TV
+                <input name="email" type="email" placeholder="email@domain.com" required>
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn-secondary">Thêm email</button>
+              </div>
+            </form>
+            <form method="post" action="{{ url_for('admin_tv_emails') }}" enctype="multipart/form-data" class="form-grid">
+              <input type="hidden" name="action" value="import">
+              <input type="hidden" name="next" value="{{ next_url }}">
+              <label>Import danh sách email (.txt)
+                <input type="file" name="email_file" accept=".txt" required>
+                <small>Mỗi dòng là một email, định dạng UTF-8</small>
+              </label>
+              <div class="actions">
+                <button type="submit" class="btn-secondary">Import email</button>
+              </div>
+            </form>
+          </div>
+          <div class="tv-email-bulk">
+            <label class="tv-email-select-all">
+              <input type="checkbox" id="tvEmailSelectAll">
+              <span>Chọn tất cả</span>
             </label>
-            <div class="actions">
-              <button type="submit" class="btn-secondary">Thêm email</button>
+            <div class="tv-email-bulk-actions">
+              <form method="post" action="{{ url_for('admin_tv_emails') }}" id="tvEmailBulkForm">
+                <input type="hidden" name="action" value="bulk_delete">
+                <input type="hidden" name="next" value="{{ next_url }}">
+                <button type="submit" class="btn-secondary" id="tvEmailBulkDeleteBtn" disabled>Xóa đã chọn</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_tv_emails') }}" onsubmit="return confirm('Xóa toàn bộ email đăng nhập TV?');">
+                <input type="hidden" name="action" value="delete_all">
+                <input type="hidden" name="next" value="{{ next_url }}">
+                <button type="submit" class="btn-secondary btn-danger">Xóa tất cả</button>
+              </form>
             </div>
-          </form>
+          </div>
           <div class="tv-email-list">
             {% if tv_emails %}
               {% for item in tv_emails %}
                 <div class="tv-email-item">
                   <div class="tv-email-top">
+                    <label class="tv-email-select">
+                      <input type="checkbox"
+                             class="tv-email-checkbox"
+                             name="email_ids"
+                             value="{{ item.id }}"
+                             form="tvEmailBulkForm">
+                      <span class="sr-only">Chọn email {{ item.email }}</span>
+                    </label>
+
                     <div>
                       <div class="tv-email-label">Email đăng nhập TV</div>
                       <div class="tv-email-value mono">{{ item.email }}</div>
                     </div>
+
                     <div class="tv-email-actions">
                       <form method="post" action="{{ url_for('admin_tv_emails') }}" onsubmit="return confirm('Xóa email này khỏi danh sách đăng nhập TV?');">
                         <input type="hidden" name="action" value="delete">
@@ -183,6 +224,7 @@
                       </form>
                     </div>
                   </div>
+
                   <div class="tv-email-meta">
                     <div class="tv-email-meta-item">
                       <span class="tv-email-meta-label">Ghi chú</span>

@@ -340,6 +340,49 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshBulkDeleteState();
   }
 
+  const tvEmailBulkForm = document.getElementById('tvEmailBulkForm');
+  const tvEmailSelectAll = document.getElementById('tvEmailSelectAll');
+  const tvEmailBulkDeleteBtn = document.getElementById('tvEmailBulkDeleteBtn');
+  const tvEmailCheckboxes = tvEmailBulkForm
+    ? Array.from(document.querySelectorAll('.tv-email-checkbox'))
+    : [];
+
+  function refreshTvEmailBulkState() {
+    if (!tvEmailBulkDeleteBtn) return;
+    const checkedCount = tvEmailCheckboxes.filter((cb) => cb.checked).length;
+    tvEmailBulkDeleteBtn.disabled = checkedCount === 0;
+    if (tvEmailSelectAll) {
+      const allChecked = tvEmailCheckboxes.length > 0 && checkedCount === tvEmailCheckboxes.length;
+      tvEmailSelectAll.checked = allChecked;
+      const someChecked = checkedCount > 0 && checkedCount < tvEmailCheckboxes.length;
+      tvEmailSelectAll.indeterminate = someChecked;
+    }
+  }
+
+  if (tvEmailBulkForm) {
+    tvEmailSelectAll?.addEventListener('change', () => {
+      tvEmailCheckboxes.forEach((cb) => {
+        cb.checked = !!tvEmailSelectAll.checked;
+      });
+      refreshTvEmailBulkState();
+    });
+
+    tvEmailCheckboxes.forEach((cb) => cb.addEventListener('change', refreshTvEmailBulkState));
+
+    tvEmailBulkForm.addEventListener('submit', (e) => {
+      const hasSelection = tvEmailCheckboxes.some((cb) => cb.checked);
+      if (!hasSelection) {
+        e.preventDefault();
+        return;
+      }
+      if (!confirm('Xóa các email đăng nhập TV đã chọn?')) {
+        e.preventDefault();
+      }
+    });
+
+    refreshTvEmailBulkState();
+  }
+
   const emailCopySpans = document.querySelectorAll('.email-copy[data-copy-email]');
   function copyEmailValue(el) {
     const value = el?.dataset?.copyEmail || el?.textContent?.trim();
@@ -377,9 +420,29 @@ document.addEventListener('DOMContentLoaded', () => {
       tvStatusBox.innerHTML = `<div class="${cls}"><div class="status-title">${title}</div>${message}</div>`;
     };
 
+    const buildTvAttemptLog = (attempts = []) => {
+      if (!Array.isArray(attempts) || attempts.length === 0) return '';
+      const lines = attempts
+        .map((attempt, idx) => {
+          const email = attempt?.email || '—';
+          const message = attempt?.message || '';
+          const steps = Array.isArray(attempt?.steps) ? attempt.steps : [];
+          const header = `<div class="status-log-line"><span class="mono">[${idx + 1}]</span> ${escapeHtml(email)} — ${escapeHtml(message)}</div>`;
+          if (!steps.length) {
+            return header;
+          }
+          const stepLines = steps
+            .map((step) => `<div class="status-log-subline">↳ ${escapeHtml(step)}</div>`)
+            .join('');
+          return `${header}${stepLines}`;
+        })
+        .join('');
+      return `<div class="status-log">${lines}</div>`;
+    };
+
     const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
 
-    tvLoginPageForm.addEventListener('submit', async (e) => {
+      tvLoginPageForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const password = tvLoginPageForm.querySelector('input[name="tv_password"]').value.trim();
       const code = tvLoginPageForm.querySelector('input[name="tv_code"]').value.trim();
@@ -394,10 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       setTvStatus(
-        `<div class="status-summary">Hệ thống đang xử lý đăng nhập TV.</div>${buildStatusSteps([
-          'Đang đăng nhập tài khoản...',
-          'Đang nhập TV...',
-        ])}`,
+        `<div class="status-summary">Hệ thống đang xử lý đăng nhập TV, vui lòng chờ...</div>`,
         'info'
       );
       tvLoginPageBtn?.setAttribute('disabled', 'disabled');
@@ -412,16 +472,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const ok = resp.ok && data?.success;
         const msg = data?.message || (ok ? 'Đăng nhập thành công.' : tvAccountIssueMessage);
 
-        // Show backend message only.
-        setTvStatus(`<div class="status-summary">${msg}</div>`, ok ? 'success' : 'warn');
+        const chosenEmail = data?.email;
+        const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
+        const attemptsLog = buildTvAttemptLog(data?.attempts);
 
+        setTvStatus(
+          `<div class="status-summary">${detail}</div>${attemptsLog}`,
+          ok ? 'success' : 'warn'
+        );
       } catch (err) {
         setTvStatus('<div class="status-summary">Lỗi khi gọi API đăng nhập TV.</div>', 'danger');
       } finally {
         tvLoginPageBtn?.removeAttribute('disabled');
       }
     });
-  }
+
+  } // ✅ THÊM DÒNG NÀY để đóng if (isTvPage && tvLoginPageForm && tvStatusBox)
+
+
 
   // === Login TV (admin) ===
   if (loginTvForm && loginTvStatus) {

@@ -152,7 +152,11 @@ def worker_process(email):
     return _login_once(email=email, tv_code=TV_CODE_TO_ENTER)
 
 
-def _login_once(email: str, tv_code: str):
+def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
+    def push_step(message: str) -> None:
+        if progress is not None:
+            progress.append(message)
+
     chrome_options = Options()
     chrome_options.add_experimental_option("detach", True) 
     chrome_options.add_argument("--no-sandbox")
@@ -164,6 +168,7 @@ def _login_once(email: str, tv_code: str):
     
     try:
         # --- BƯỚC 1: NETFLIX WEB LOGIN ---
+        push_step("Đang mở trang đăng nhập Netflix.")
         driver.get("https://www.netflix.com/vn/login")
         netflix_handle = driver.current_window_handle
         
@@ -174,10 +179,12 @@ def _login_once(email: str, tv_code: str):
         
         btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Gửi mã đăng nhập']")))
         safe_click(driver, btn_send)
+        push_step("Đã gửi yêu cầu mã đăng nhập.")
         
         time.sleep(2) 
 
         # --- BƯỚC 2: TUKITECH ---
+        push_step("Đang lấy mã đăng nhập từ Tukitech.")
         driver.execute_script("window.open('');")
         tukitech_handle = [h for h in driver.window_handles if h != netflix_handle][0]
         driver.switch_to.window(tukitech_handle)
@@ -194,6 +201,7 @@ def _login_once(email: str, tv_code: str):
         
         # --- BƯỚC 3: RETRY LOOP & XỬ LÝ TV ---
         print(f"[{email}] Bắt đầu quy trình...")
+        push_step("Đang xác thực tài khoản trên Netflix.")
         login_web_success = False
 
         for attempt in range(1, MAX_RETRIES + 1):
@@ -201,23 +209,36 @@ def _login_once(email: str, tv_code: str):
             
             if login_web_success:
                 print(f"[{email}] -> Đăng nhập Web OK.")
+                push_step("Đăng nhập web thành công.")
                 break 
             
             elif attempt < MAX_RETRIES:
                 print(f"[{email}] -> Web Login thất bại (Lần {attempt}). Thử lại sau 15s...")
+                push_step(f"Đăng nhập web thất bại, thử lại lần {attempt + 1}.")
                 driver.switch_to.window(tukitech_handle)
                 time.sleep(15)
 
         # --- BƯỚC 4: NẾU WEB OK -> CHUYỂN QUA NHẬP MÃ TV ---
         if login_web_success:
             driver.switch_to.window(netflix_handle)
+            push_step("Đang nhập mã TV.")
             tv_success, tv_message = enter_tv_code(driver, wait, tv_code)
-            return {"success": tv_success, "message": tv_message, "email": email}
+            if tv_success:
+                push_step("Đăng nhập TV thành công.")
+            else:
+                push_step(f"Đăng nhập TV thất bại: {tv_message}")
+            return {"success": tv_success, "message": tv_message, "email": email, "steps": progress or []}
 
-        return {"success": False, "message": "Không qua được bước đăng nhập Web.", "email": email}
+        return {
+            "success": False,
+            "message": "Không qua được bước đăng nhập Web.",
+            "email": email,
+            "steps": progress or [],
+        }
 
     except Exception as e:
-        return {"success": False, "message": f"Lỗi với {email}: {e}", "email": email}
+        push_step(f"Lỗi trong quá trình xử lý: {e}")
+        return {"success": False, "message": f"Lỗi với {email}: {e}", "email": email, "steps": progress or []}
 
     finally:
         try:
@@ -229,20 +250,26 @@ def _login_once(email: str, tv_code: str):
 def login_tv(password: str, code: str, email: str | None = None):
     expected_password = _get_tv_password()
     if expected_password and password != expected_password:
-        return {"success": False, "message": "Sai mật khẩu đăng nhập TV."}
+        return {"success": False, "message": "Sai mật khẩu đăng nhập TV.", "steps": ["Sai mật khẩu đăng nhập TV."]}
 
     if not re.fullmatch(r"\d{8}", code or ""):
-        return {"success": False, "message": "Mã TV phải đủ 8 số."}
+        return {"success": False, "message": "Mã TV phải đủ 8 số.", "steps": ["Mã TV phải đủ 8 số."]}
 
     target_email = _resolve_email(email)
     if not target_email:
-        return {"success": False, "message": "Không có email nào để đăng nhập TV."}
+        return {"success": False, "message": "Không có email nào để đăng nhập TV.", "steps": ["Không có email nào để đăng nhập TV."]}
 
-    result = _login_once(email=target_email, tv_code=code)
+    progress: list[str] = []
+    result = _login_once(email=target_email, tv_code=code, progress=progress)
     if isinstance(result, dict):
         return result
 
-    return {"success": bool(result), "message": "Đăng nhập TV thành công." if result else "Không thể đăng nhập TV.", "email": target_email}
+    return {
+        "success": bool(result),
+        "message": "Đăng nhập TV thành công." if result else "Không thể đăng nhập TV.",
+        "email": target_email,
+        "steps": progress,
+    }
 
 if __name__ == "__main__":
     tasks = [e.strip() for e in INPUT_EMAILS if e.strip()]
