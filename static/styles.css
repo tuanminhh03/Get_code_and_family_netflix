@@ -503,12 +503,14 @@ label small::before{
   justify-content:space-between;
   gap:18px;
 }
+
 .tv-email-select{
   display:flex;
   align-items:center;
   justify-content:center;
   padding:4px;
 }
+
 .tv-email-select input[type="checkbox"]{
   transform: scale(1.1);
   cursor:pointer;

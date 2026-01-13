@@ -442,7 +442,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const validateCode = (value) => /^\d{8}$/.test((value || '').trim());
 
-    tvLoginPageForm.addEventListener('submit', async (e) => {
+      tvLoginPageForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const password = tvLoginPageForm.querySelector('input[name="tv_password"]').value.trim();
       const code = tvLoginPageForm.querySelector('input[name="tv_code"]').value.trim();
@@ -472,7 +472,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const ok = resp.ok && data?.success;
         const msg = data?.message || (ok ? 'Đăng nhập thành công.' : tvAccountIssueMessage);
 
-        // merged: show message + append chosen email if backend returns it
         const chosenEmail = data?.email;
         const detail = chosenEmail ? `${msg} (Email: ${chosenEmail})` : msg;
         const attemptsLog = buildTvAttemptLog(data?.attempts);
@@ -481,14 +480,16 @@ document.addEventListener('DOMContentLoaded', () => {
           `<div class="status-summary">${detail}</div>${attemptsLog}`,
           ok ? 'success' : 'warn'
         );
-
       } catch (err) {
         setTvStatus('<div class="status-summary">Lỗi khi gọi API đăng nhập TV.</div>', 'danger');
       } finally {
         tvLoginPageBtn?.removeAttribute('disabled');
       }
     });
-  }
+
+  } // ✅ THÊM DÒNG NÀY để đóng if (isTvPage && tvLoginPageForm && tvStatusBox)
+
+
 
   // === Login TV (admin) ===
   if (loginTvForm && loginTvStatus) {
