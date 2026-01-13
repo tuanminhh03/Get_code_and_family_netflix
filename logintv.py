@@ -247,9 +247,16 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
             pass
 
 
-def login_tv(password: str, code: str, email: str | None = None):
-    expected_password = _get_tv_password()
-    if expected_password and password != expected_password:
+def login_tv(password: str, code: str, email: str | None = None, expected_password: str | None = None):
+    expected_password = (expected_password if expected_password is not None else _get_tv_password()) or ""
+    expected_password = expected_password.strip()
+    if not expected_password:
+        return {
+            "success": False,
+            "message": "Chưa cấu hình mật khẩu đăng nhập TV.",
+            "steps": ["Chưa cấu hình mật khẩu đăng nhập TV."],
+        }
+    if password != expected_password:
         return {"success": False, "message": "Sai mật khẩu đăng nhập TV.", "steps": ["Sai mật khẩu đăng nhập TV."]}
 
     if not re.fullmatch(r"\d{8}", code or ""):

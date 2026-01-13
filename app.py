@@ -30,6 +30,8 @@ TV_REMOTE_NOTE_MARKER = "[TV-REMOTE]"
 TV_LOGIN_FAILURE_MARKER = "[TV-LOGIN-FAILED]"
 TV_LOGIN_FAILURE_NOTE = "Không đăng nhập được TV."
 TV_SEED_DISABLED_KEY = "tv_login_seed_disabled"
+TV_PASSWORD_KEY = "tv_password"
+
 
 
 def _customer_table_name():
@@ -222,6 +224,12 @@ def _set_app_setting(key: str, value: str | None) -> None:
     except Exception:
         db.session.rollback()
 
+
+def _get_tv_password_setting() -> str:
+    stored = _get_app_setting(TV_PASSWORD_KEY)
+    if stored and stored.strip():
+        return stored.strip()
+    return str(getattr(config, "TV_PASSWORD", "") or os.getenv("TV_PASSWORD") or "").strip()
 
 
 
@@ -746,7 +754,7 @@ def _format_local_time(value: datetime, tz_offset_hours: int = 7) -> str:
 def _login_tv(password: str, code: str, email: str | None = None):
     """Ủy quyền sang module logintv để dùng chung fallback/validation."""
 
-    expected_password = str(getattr(config, "TV_PASSWORD", "") or os.getenv("TV_PASSWORD") or "").strip()
+    expected_password = _get_tv_password_setting()
     if not expected_password:
         return {"success": False, "message": "Chưa cấu hình mật khẩu đăng nhập TV."}
     if expected_password and password != expected_password:
@@ -762,7 +770,8 @@ def _login_tv(password: str, code: str, email: str | None = None):
             return {"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}
         chosen_email = record.email
 
-    result = run_login_tv(password=password, code=code, email=chosen_email)
+result = run_login_tv(password=password, code=code, email=chosen_email, expected_password=expected_password)
+
 
     # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
     if isinstance(result, dict):
@@ -1010,6 +1019,8 @@ def admin():
     next_url = request.full_path.rstrip('?')
     tv_login_emails = _list_tv_login_emails()
     tv_email_summary = _get_tv_login_summary()
+    tv_password_configured = bool(_get_tv_password_setting())
+
     return render_template(
         'admin.html',
         customers=customers_view,
@@ -1021,6 +1032,7 @@ def admin():
         next_url=next_url,
         tv_emails=tv_login_emails,
         tv_email_summary=tv_email_summary,
+        tv_password_configured=tv_password_configured,
     )
 
 
@@ -1407,6 +1419,21 @@ def admin_manage():
     flash('Hành động không hợp lệ.', 'danger')
     return redirect(next_url)
 
+
+@app.route('/admin/tv-password', methods=['POST'])
+def admin_tv_password():
+    if not session.get('is_admin'):
+        flash('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.', 'danger')
+        return redirect(url_for('admin'))
+
+    password = (request.form.get('tv_password') or '').strip()
+    if not password:
+        flash('Vui lòng nhập mật khẩu TV.', 'danger')
+        return redirect(url_for('admin'))
+
+    _set_app_setting(TV_PASSWORD_KEY, password)
+    flash('Đã lưu mật khẩu đăng nhập TV.', 'success')
+    return redirect(url_for('admin'))
 
 @app.route('/admin/tv-emails', methods=['POST'])
 def admin_tv_emails():
