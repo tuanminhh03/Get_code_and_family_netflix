@@ -1833,4 +1833,7 @@ if __name__ == '__main__':
         else:
             print("ℹ️ Bỏ qua warm-up TukiPersistent (TUKI_WARMUP=0). Worker sẽ khởi tạo khi có request đầu tiên.", flush=True)
 
-        app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        host = os.getenv("HOST", "0.0.0.0")
+        port = int(os.getenv("PORT", "5000"))
+        debug = str(os.getenv("FLASK_DEBUG", "0")).strip().lower() in {"1", "true", "yes", "y", "on"}
+        app.run(host=host, port=port, debug=debug, use_reloader=False)
