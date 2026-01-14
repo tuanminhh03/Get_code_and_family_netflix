@@ -196,6 +196,24 @@
               </form>
             </div>
           </div>
+          <div class="tv-email-summary">
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">All (số lượng email)</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.total }}</strong>
+            </div>
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">Used (đã login TV thành công)</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.logged }}</strong>
+            </div>
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">Error (login TV không được)</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.failed }}</strong>
+            </div>
+            <div class="tv-email-summary-item">
+              <span class="tv-email-summary-label">Còn lại (chưa sử dụng)</span>
+              <strong class="tv-email-summary-value">{{ tv_email_summary.remaining }}</strong>
+            </div>
+          </div>
           <div class="tv-email-list">
             {% if tv_emails %}
               {% for item in tv_emails %}
@@ -244,24 +262,6 @@
             {% else %}
               <div class="empty-state">Chưa có email nào trong danh sách.</div>
             {% endif %}
-          </div>
-          <div class="tv-email-summary">
-            <div class="tv-email-summary-item">
-              <span class="tv-email-summary-label">All (số lượng email)</span>
-              <strong class="tv-email-summary-value">{{ tv_email_summary.total }}</strong>
-            </div>
-            <div class="tv-email-summary-item">
-              <span class="tv-email-summary-label">Used (đã login TV thành công)</span>
-              <strong class="tv-email-summary-value">{{ tv_email_summary.logged }}</strong>
-            </div>
-            <div class="tv-email-summary-item">
-              <span class="tv-email-summary-label">Error (login TV không được)</span>
-              <strong class="tv-email-summary-value">{{ tv_email_summary.failed }}</strong>
-            </div>
-            <div class="tv-email-summary-item">
-              <span class="tv-email-summary-label">Còn lại (chưa sử dụng)</span>
-              <strong class="tv-email-summary-value">{{ tv_email_summary.remaining }}</strong>
-            </div>
           </div>
         </div>
       </details>
