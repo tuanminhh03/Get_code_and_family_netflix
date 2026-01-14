@@ -123,6 +123,9 @@ def enter_tv_code(driver, wait, tv_code):
             "that code isnt right. try again.",
             "mã đó không đúng. hãy thử lại nào.",
         }
+        skip_texts = {
+            "đã xảy ra lỗi. hãy thử đăng nhập bằng điều khiển tv.",
+        }
 
         # Chờ đến khi thành công hoặc nhận thông báo sai mã cụ thể
         start_time = time.time()
@@ -152,6 +155,20 @@ def enter_tv_code(driver, wait, tv_code):
                     if lowered in stop_texts:
                         print(" -> ❌ Sai mã TV, dừng lại.")
                         return False, "Mã bạn nhập sai vui lòng nhập lại", "invalid_tv_code"
+
+            title_elements = driver.find_elements(
+                By.CSS_SELECTOR,
+                "h1.tvsignup-title[data-uia='witcher-code-title']",
+            )
+            if title_elements:
+                raw_title = (title_elements[0].text or "").strip()
+                lowered_title = raw_title.lower()
+                if raw_title and raw_title != last_message:
+                    print(f" -> Thông báo trạng thái TV: {raw_title}")
+                    last_message = raw_title
+                if lowered_title in skip_texts:
+                    print(" -> ⚠️ Bỏ qua lỗi điều khiển TV, thử tài khoản khác.")
+                    return False, raw_title, "tv_login_skip"
 
             time.sleep(1)
 
