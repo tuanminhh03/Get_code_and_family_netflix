@@ -119,6 +119,7 @@ def enter_tv_code(driver, wait, tv_code):
 
         # Các thông báo "sai mã" cần dừng ngay
         stop_texts = {
+            "that code wasn't right. try again.",
             "that code isn't right. try again.",
             "that code isnt right. try again.",
             "mã đó không đúng. hãy thử lại nào.",
