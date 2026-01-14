@@ -507,8 +507,8 @@ label small::before{
 .tv-email-item{
   position:relative;
   display:grid;
-  gap:14px;
-  padding:18px 18px 16px;
+  gap:10px;
+  padding:14px 16px;
   border-radius:18px;
   border:1px solid rgba(255,255,255,0.08);
   background:
@@ -519,7 +519,7 @@ label small::before{
 .tv-email-item::before{
   content:"";
   position:absolute;
-  inset:14px auto 14px 0;
+  inset:10px auto 10px 0;
   width:3px;
   border-radius:999px;
   background:linear-gradient(180deg, rgba(91,140,255,0.85), rgba(91,140,255,0));
@@ -529,28 +529,35 @@ label small::before{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:18px;
+  gap:12px;
 }
 
 .tv-email-select{
   display:flex;
   align-items:center;
   justify-content:center;
-  padding:4px;
+  padding:2px;
 }
 
 .tv-email-select input[type="checkbox"]{
   transform: scale(1.1);
   cursor:pointer;
 }
+.tv-email-info{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:4px 12px;
+  min-width:0;
+}
 .tv-email-label{
-  font-size:12px;
+  font-size:11px;
   text-transform:uppercase;
   letter-spacing:0.8px;
   color:var(--muted);
 }
 .tv-email-value{
-  font-size:16px;
+  font-size:15px;
   word-break:break-all;
 }
 .tv-email-actions{
@@ -558,22 +565,24 @@ label small::before{
   justify-content:flex-end;
 }
 .tv-email-meta{
-  display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
-  gap:12px;
-  padding:12px 6px 4px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:4px 2px 0;
 }
 .tv-email-meta-item{
   display:flex;
   flex-direction:column;
-  gap:6px;
-  padding:10px 12px;
-  border-radius:12px;
+  gap:4px;
+  padding:6px 10px;
+  border-radius:10px;
   border:1px dashed rgba(255,255,255,0.12);
   background:rgba(10,18,35,0.6);
+  min-width:160px;
+  flex:1 1 180px;
 }
 .tv-email-meta-label{
-  font-size:12px;
+  font-size:11px;
   text-transform:uppercase;
   letter-spacing:0.6px;
   color:var(--muted);
