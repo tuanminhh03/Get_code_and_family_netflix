@@ -118,31 +118,39 @@ def enter_tv_code(driver, wait, tv_code):
         submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='witcher-code-submit']")))
         safe_click(driver, submit_btn)
 
-        # Chờ kiểm tra URL Success
-        try:
-            wait.until(EC.url_contains("/tv/out/success"))
-            print(" -> ✅ KẾT QUẢ: ĐĂNG NHẬP TV THÀNH CÔNG (Url success)")
-            return True, "Đăng nhập TV thành công."
-        except TimeoutException:
-            short_wait = WebDriverWait(driver, 5)
-            msg_text = "Không thể đăng nhập TV."
-            try:
-                error_el = short_wait.until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, "div.nf-message-contents[data-uia='UIMessage-content']")
-                    )
-                )
-                raw_text = (error_el.text or "").strip()
+        stop_texts = {
+            "that code isn't right. try again.",
+            "that code isnt right. try again.",
+            "mã đó không đúng. hãy thử lại nào.",
+        }
+
+        # Chờ đến khi thành công hoặc nhận thông báo sai mã cụ thể
+        start_time = time.time()
+        max_wait_seconds = 60
+        last_message = None
+        while time.time() - start_time < max_wait_seconds:
+            if "/tv/out/success" in driver.current_url:
+                print(" -> ✅ KẾT QUẢ: ĐĂNG NHẬP TV THÀNH CÔNG (Url success)")
+                return True, "Đăng nhập TV thành công."
+
+            error_elements = driver.find_elements(
+                By.CSS_SELECTOR,
+                "div.nf-message-contents[data-uia='UIMessage-content']",
+            )
+            if error_elements:
+                raw_text = (error_elements[0].text or "").strip()
                 if raw_text:
-                    print(f" -> Thông báo lỗi trên trang TV: {raw_text}")
                     lowered = raw_text.lower()
-                    if "không đúng" in lowered or "nhập sai" in lowered:
-                        msg_text = "Mã bạn nhập sai vui lòng nhập lại"
-                    else:
-                        msg_text = raw_text
-            except TimeoutException:
-                print(" -> ❌ KẾT QUẢ: KHÔNG THẤY TRANG SUCCESS (Có thể sai mã hoặc lỗi hệ thống)")
-            return False, msg_text
+                    if raw_text != last_message:
+                        print(f" -> Thông báo lỗi trên trang TV: {raw_text}")
+                        last_message = raw_text
+                    if lowered in stop_texts:
+                        return False, "Mã bạn nhập sai vui lòng nhập lại"
+
+            time.sleep(1)
+
+        print(" -> ❌ KẾT QUẢ: KHÔNG THẤY TRANG SUCCESS (Có thể sai mã hoặc lỗi hệ thống)")
+        return False, "Không thể đăng nhập TV."
 
     except Exception as e:
         print(f" -> Lỗi khi nhập mã TV: {e}")
