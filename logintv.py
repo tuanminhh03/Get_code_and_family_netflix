@@ -99,7 +99,7 @@ def enter_tv_code(driver, wait, tv_code):
         code_str = str(tv_code).strip()
         if len(code_str) != 8 or not code_str.isdigit():
             print(f"LỖI: Mã TV phải có đúng 8 số. Mã hiện tại: {code_str}")
-            return False, "Mã TV phải có đúng 8 số."
+            return False, "Mã TV phải có đúng 8 số.", "invalid_input"
 
         # Vòng lặp điền từng số vào 8 ô input riêng biệt
         for i in range(8):
@@ -132,7 +132,7 @@ def enter_tv_code(driver, wait, tv_code):
         while time.time() - start_time < max_wait_seconds:
             if "/tv/out/success" in (driver.current_url or ""):
                 print(" -> ✅ KẾT QUẢ: ĐĂNG NHẬP TV THÀNH CÔNG (Url success)")
-                return True, "Đăng nhập TV thành công."
+                return True, "Đăng nhập TV thành công.", None
 
             error_elements = driver.find_elements(
                 By.CSS_SELECTOR,
@@ -150,16 +150,17 @@ def enter_tv_code(driver, wait, tv_code):
 
                     # Nếu đúng message "mã sai" thì trả về luôn
                     if lowered in stop_texts:
-                        return False, "Mã bạn nhập sai vui lòng nhập lại"
+                        print(" -> ❌ Sai mã TV, dừng lại.")
+                        return False, "Mã bạn nhập sai vui lòng nhập lại", "invalid_tv_code"
 
             time.sleep(1)
 
         print(" -> ❌ KẾT QUẢ: KHÔNG THẤY TRANG SUCCESS (Có thể sai mã hoặc lỗi hệ thống)")
-        return False, "Không thể đăng nhập TV."
+        return False, "Không thể đăng nhập TV.", "tv_login_failed"
 
     except Exception as e:
         print(f" -> Lỗi khi nhập mã TV: {e}")
-        return False, "Không thể đăng nhập TV."
+        return False, "Không thể đăng nhập TV.", "tv_login_error"
 
 
 def worker_process(email):
@@ -236,12 +237,18 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
         if login_web_success:
             driver.switch_to.window(netflix_handle)
             push_step("Đang nhập mã TV.")
-            tv_success, tv_message = enter_tv_code(driver, wait, tv_code)
+            tv_success, tv_message, tv_reason = enter_tv_code(driver, wait, tv_code)
             if tv_success:
                 push_step("Đăng nhập TV thành công.")
             else:
                 push_step(f"Đăng nhập TV thất bại: {tv_message}")
-            return {"success": tv_success, "message": tv_message, "email": email, "steps": progress or []}
+            return {
+                "success": tv_success,
+                "message": tv_message,
+                "reason": tv_reason,
+                "email": email,
+                "steps": progress or [],
+            }
 
         return {
             "success": False,
@@ -261,6 +268,19 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
             pass
 
 
+def _iter_emails(email: str | None):
+    seen = set()
+    candidates = []
+    if email and email.strip():
+        candidates.append(email.strip())
+    candidates.extend(INPUT_EMAILS)
+    for item in candidates:
+        candidate = (item or "").strip()
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            yield candidate
+
+
 def login_tv(password: str, code: str, email: str | None = None, expected_password: str | None = None):
     expected_password = (expected_password if expected_password is not None else _get_tv_password()) or ""
     expected_password = expected_password.strip()
@@ -276,20 +296,27 @@ def login_tv(password: str, code: str, email: str | None = None, expected_passwo
     if not re.fullmatch(r"\d{8}", code or ""):
         return {"success": False, "message": "Mã TV phải đủ 8 số.", "steps": ["Mã TV phải đủ 8 số."]}
 
-    target_email = _resolve_email(email)
-    if not target_email:
+    emails = list(_iter_emails(email))
+    if not emails:
         return {"success": False, "message": "Không có email nào để đăng nhập TV.", "steps": ["Không có email nào để đăng nhập TV."]}
 
-    progress: list[str] = []
-    result = _login_once(email=target_email, tv_code=code, progress=progress)
-    if isinstance(result, dict):
-        return result
+    last_result = None
+    for target_email in emails:
+        progress: list[str] = []
+        result = _login_once(email=target_email, tv_code=code, progress=progress)
+        if isinstance(result, dict):
+            last_result = result
+            if result.get("success"):
+                return result
+            if result.get("reason") == "invalid_tv_code":
+                return result
+            continue
 
     return {
-        "success": bool(result),
-        "message": "Đăng nhập TV thành công." if result else "Không thể đăng nhập TV.",
-        "email": target_email,
-        "steps": progress,
+        "success": False,
+        "message": "Không thể đăng nhập TV.",
+        "email": last_result.get("email") if last_result else None,
+        "steps": last_result.get("steps") if last_result else [],
     }
 
 if __name__ == "__main__":
