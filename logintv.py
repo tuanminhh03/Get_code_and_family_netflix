@@ -97,37 +97,40 @@ def enter_tv_code(driver, wait, tv_code):
 
         # Đảm bảo mã là chuỗi và đủ 8 ký tự
         code_str = str(tv_code).strip()
-        if len(code_str) != 8:
+        if len(code_str) != 8 or not code_str.isdigit():
             print(f"LỖI: Mã TV phải có đúng 8 số. Mã hiện tại: {code_str}")
             return False, "Mã TV phải có đúng 8 số."
 
         # Vòng lặp điền từng số vào 8 ô input riêng biệt
         for i in range(8):
             digit = code_str[i]
-            # Selector theo data-uia="pin-number-0" đến "pin-number-7"
             input_selector = f"input[data-uia='pin-number-{i}']"
             input_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, input_selector)))
             input_field.clear()
             input_field.send_keys(digit)
-            time.sleep(0.1) # Delay nhẹ để giống người nhập
+            time.sleep(0.1)
 
         print(f" -> Đã điền mã {code_str}. Đang bấm Continue...")
-        
-        # Bấm nút CONTINUE (data-uia="witcher-code-submit")
-        # Nút này ban đầu disabled, cần đợi nó enable hoặc click được
-        submit_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='witcher-code-submit']")))
+
+        submit_btn = wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='witcher-code-submit']"))
+        )
         safe_click(driver, submit_btn)
 
+        # Các thông báo "sai mã" cần dừng ngay
         stop_texts = {
             "that code isn't right. try again.",
             "that code isnt right. try again.",
+            "mã đó không đúng. hãy thử lại nào.",
         }
 
         # Chờ đến khi thành công hoặc nhận thông báo sai mã cụ thể
         start_time = time.time()
         max_wait_seconds = 60
+        last_message = None
+
         while time.time() - start_time < max_wait_seconds:
-            if "/tv/out/success" in driver.current_url:
+            if "/tv/out/success" in (driver.current_url or ""):
                 print(" -> ✅ KẾT QUẢ: ĐĂNG NHẬP TV THÀNH CÔNG (Url success)")
                 return True, "Đăng nhập TV thành công."
 
@@ -139,7 +142,13 @@ def enter_tv_code(driver, wait, tv_code):
                 raw_text = (error_elements[0].text or "").strip()
                 if raw_text:
                     lowered = raw_text.lower()
-                    print(f" -> Thông báo lỗi trên trang TV: {raw_text}")
+
+                    # Chỉ print khi message thay đổi để tránh spam log
+                    if raw_text != last_message:
+                        print(f" -> Thông báo lỗi trên trang TV: {raw_text}")
+                        last_message = raw_text
+
+                    # Nếu đúng message "mã sai" thì trả về luôn
                     if lowered in stop_texts:
                         return False, "Mã bạn nhập sai vui lòng nhập lại"
 
@@ -151,6 +160,7 @@ def enter_tv_code(driver, wait, tv_code):
     except Exception as e:
         print(f" -> Lỗi khi nhập mã TV: {e}")
         return False, "Không thể đăng nhập TV."
+
 
 def worker_process(email):
     return _login_once(email=email, tv_code=TV_CODE_TO_ENTER)
