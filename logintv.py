@@ -227,11 +227,11 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
        - Có sẵn nút "Gửi mã đăng nhập" (không cần bấm Use)
        - Hoặc nó bắt nhập password => không dùng được mã đăng nhập
 
-    Trả về (success, message, reason) để xử lý bỏ qua tài khoản không hỗ trợ mã đăng nhập.
+    Trả về (success, message, reason).
     """
     driver.get("https://www.netflix.com/vn/login")
 
-    # Điền email (đừng dùng id :r0: vì thay đổi liên tục)
+    # Điền email
     email_input = wait.until(EC.presence_of_element_located((By.NAME, "userLoginId")))
     email_input.clear()
     email_input.send_keys(email)
@@ -241,18 +241,23 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     continue_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, continue_selector)))
     safe_click(driver, continue_btn)
 
+    # Một số lúc Netflix lag nên bấm lại 1-2 lần
     for _ in range(2):
         time.sleep(0.5)
         remaining = driver.find_elements(By.CSS_SELECTOR, continue_selector)
         if not remaining:
             break
-        if remaining[0].is_enabled():
-            safe_click(driver, remaining[0])
+        try:
+            if remaining[0].is_enabled():
+                safe_click(driver, remaining[0])
+        except Exception:
+            pass
 
     use_code_xpath = "//button[normalize-space()='Sử dụng mã đăng nhập' or normalize-space()='Use a sign-in code']"
     send_code_xpath = "//button[normalize-space()='Gửi mã đăng nhập' or normalize-space()='Send sign-in code']"
     otp_selector = "input[name='challengeOtp']"
 
+    # Các lỗi dạng "tạm thời" -> bỏ qua account / thử lại account khác
     skip_texts = {
         "đã xảy ra lỗi. vui lòng thử lại trong vài phút.",
     }
@@ -265,45 +270,60 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
 
     end_time = time.time() + 20
     last_message = None
+    saw_generic_error = False  # nhánh ignore lỗi tạm thời: gặp lỗi nhưng chờ Netflix chuyển state
 
     while time.time() < end_time:
+        # 1) OTP đã hiện
         if driver.find_elements(By.CSS_SELECTOR, otp_selector):
             return True, None, None
 
+        # 2) Bắt nhập password
         if driver.find_elements(By.NAME, "password"):
             return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
 
+        # 3) Message lỗi
         message_text = _extract_netflix_message(driver)
         if message_text:
             last_message = message_text
             lowered = message_text.lower()
+
             if "không tìm thấy" in lowered or "can't find" in lowered:
                 return False, message_text, "account_not_found"
+
             if is_skip_text(message_text):
                 return False, message_text, "login_skip"
-            # Đợi thêm để tránh dừng sớm nếu Netflix đang chuyển trạng thái.
 
+            # Gặp lỗi chung thì đừng return ngay: chờ Netflix chuyển trạng thái (giống nhánh codex)
+            saw_generic_error = True
+
+        # 4) Có nút send code trực tiếp
         if driver.find_elements(By.XPATH, send_code_xpath):
             btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
             safe_click(driver, btn_send)
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
             return True, None, None
 
+        # 5) Có nút use code -> rồi send code
         if driver.find_elements(By.XPATH, use_code_xpath):
             btn_use_code = wait.until(EC.element_to_be_clickable((By.XPATH, use_code_xpath)))
             safe_click(driver, btn_use_code)
+
             btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
             safe_click(driver, btn_send)
+
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
             return True, None, None
 
         time.sleep(0.5)
 
+    # Hết thời gian chờ
     if last_message:
         if is_skip_text(last_message):
             return False, last_message, "login_skip"
+        # nếu đã thấy lỗi chung hoặc có message thì báo flow error
         return False, last_message, "login_flow_error"
 
+    # Không có message gì rõ ràng
     return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_code_unavailable"
 
 
