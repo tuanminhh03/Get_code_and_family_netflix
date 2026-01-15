@@ -265,8 +265,10 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
-    # ✅ FIX CONFLICT: chọn 30s để ổn định hơn
-    end_time = time.time() + 30
+
+    end_time = time.time() + 60
+
+
     last_message = None
 
     while time.time() < end_time:
@@ -298,6 +300,8 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False, last_message, "login_skip"
         return False, last_message, "login_flow_error"
 
+
+    # Không có message gì rõ ràng
     return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_skip"
 
 
