@@ -199,6 +199,12 @@ def _extract_netflix_message(driver):
         "div.nf-message-contents[data-uia='UIMessage-content']",
         "div[data-uia='UIMessage-content']",
         "div.textWithTags",
+        "div.ui-message-contents",
+        "div.ui-message-container",
+        "div[role='alert']",
+        "div.alert",
+        "div.alert-error",
+        "div[data-uia='error-message']",
     ]
     for selector in selectors:
         elements = driver.find_elements(By.CSS_SELECTOR, selector)
@@ -231,10 +237,17 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     email_input.send_keys(email)
 
     # Bấm Tiếp tục
-    continue_btn = wait.until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='continue-button']"))
-    )
+    continue_selector = "button[data-uia='continue-button']"
+    continue_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, continue_selector)))
     safe_click(driver, continue_btn)
+
+    for _ in range(2):
+        time.sleep(0.5)
+        remaining = driver.find_elements(By.CSS_SELECTOR, continue_selector)
+        if not remaining:
+            break
+        if remaining[0].is_enabled():
+            safe_click(driver, remaining[0])
 
     use_code_xpath = "//button[normalize-space()='Sử dụng mã đăng nhập' or normalize-space()='Use a sign-in code']"
     send_code_xpath = "//button[normalize-space()='Gửi mã đăng nhập' or normalize-space()='Send sign-in code']"
@@ -250,43 +263,48 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
-    try:
-        wait_short = WebDriverWait(driver, 8)
-        wait_short.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
-        return True, None, None
-    except TimeoutException:
+    end_time = time.time() + 20
+    last_message = None
+
+    while time.time() < end_time:
+        if driver.find_elements(By.CSS_SELECTOR, otp_selector):
+            return True, None, None
+
+        if driver.find_elements(By.NAME, "password"):
+            return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
+
         message_text = _extract_netflix_message(driver)
-        if message_text and is_skip_text(message_text):
-            return False, message_text, "login_skip"
-        return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_code_unavailable"
+        if message_text:
+            last_message = message_text
+            lowered = message_text.lower()
+            if "không tìm thấy" in lowered or "can't find" in lowered:
+                return False, message_text, "account_not_found"
+            if is_skip_text(message_text):
+                return False, message_text, "login_skip"
+            # Đợi thêm để tránh dừng sớm nếu Netflix đang chuyển trạng thái.
 
-    if driver.find_elements(By.NAME, "password"):
-        return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
+        if driver.find_elements(By.XPATH, send_code_xpath):
+            btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
+            safe_click(driver, btn_send)
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
+            return True, None, None
 
-    message_text = _extract_netflix_message(driver)
-    if message_text:
-        lowered = message_text.lower()
-        if "không tìm thấy" in lowered or "can't find" in lowered:
-            return False, message_text, "account_not_found"
-        if is_skip_text(message_text):
-            return False, message_text, "login_skip"
-        return False, message_text, "login_flow_error"
+        if driver.find_elements(By.XPATH, use_code_xpath):
+            btn_use_code = wait.until(EC.element_to_be_clickable((By.XPATH, use_code_xpath)))
+            safe_click(driver, btn_use_code)
+            btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
+            safe_click(driver, btn_send)
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
+            return True, None, None
 
-    if driver.find_elements(By.XPATH, send_code_xpath):
-        btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
-        safe_click(driver, btn_send)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
-        return True, None, None
+        time.sleep(0.5)
 
-    if driver.find_elements(By.XPATH, use_code_xpath):
-        btn_use_code = wait.until(EC.element_to_be_clickable((By.XPATH, use_code_xpath)))
-        safe_click(driver, btn_use_code)
-        btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
-        safe_click(driver, btn_send)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
-        return True, None, None
+    if last_message:
+        if is_skip_text(last_message):
+            return False, last_message, "login_skip"
+        return False, last_message, "login_flow_error"
 
-    return False, "Không thể mở màn nhập mã đăng nhập.", "login_code_unavailable"
+    return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_code_unavailable"
 
 
 def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
