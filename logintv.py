@@ -78,18 +78,19 @@ def get_and_paste_code(driver, wait, netflix_handle, tukitech_handle):
         final_code_field.clear()
         final_code_field.send_keys(code_text)
 
-        # Submit login
-        BTN_LOGIN_FINAL_XPATH = "//button[normalize-space()='Đăng nhập' or @type='submit']"
-        login_btn = wait.until(EC.element_to_be_clickable((By.XPATH, BTN_LOGIN_FINAL_XPATH)))
-        safe_click(driver, login_btn)
+        # Netflix sẽ tự xác nhận sau khi dán mã, không cần bấm nút.
+        try:
+            WebDriverWait(driver, 20).until(
+                lambda d: any(
+                    keyword in (d.current_url or "").lower()
+                    for keyword in ("browse", "profiles")
+                )
+            )
+        except TimeoutException:
+            return False
 
-        time.sleep(4)
-
-        # Kiểm tra nếu vào được Web thành công
         cur = (driver.current_url or "").lower()
-        if ("browse" in cur) or ("profiles" in cur):
-            return True
-        return False
+        return ("browse" in cur) or ("profiles" in cur)
 
     except Exception:
         return False
@@ -234,7 +235,7 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
         wait_short.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
         return True, None, None
     except TimeoutException:
-        pass
+        return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_code_unavailable"
 
     if driver.find_elements(By.NAME, "password"):
         return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
@@ -284,6 +285,7 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
         if not login_flow_ok:
             message = login_flow_message or "Không thể yêu cầu mã đăng nhập."
             push_step(f"Không thể yêu cầu mã đăng nhập: {message}")
+            push_step("Không gửi được mã Netflix, sẽ chuyển sang tài khoản khác.")
             return {
                 "success": False,
                 "message": message,
@@ -342,17 +344,22 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
             else:
                 push_step(f"Đăng nhập TV thất bại: {tv_message}")
 
-            return {
+            result = {
                 "success": tv_success,
                 "message": tv_message,
                 "reason": tv_reason,
                 "email": email,
                 "steps": progress or [],
             }
+            if tv_reason == "tv_login_skip":
+                push_step("Gặp lỗi đăng nhập bằng điều khiển TV, sẽ đổi sang tài khoản khác.")
+            return result
 
+        push_step("Không gửi được mã Netflix hoặc không đăng nhập web thành công, chuyển sang tài khoản khác.")
         return {
             "success": False,
             "message": "Không qua được bước đăng nhập Web.",
+            "reason": "web_login_failed",
             "email": email,
             "steps": progress or [],
         }
@@ -410,6 +417,8 @@ def login_tv(password: str, code: str, email: str | None = None, expected_passwo
                 return result
             if result.get("reason") == "invalid_tv_code":
                 return result
+            if result.get("reason") == "tv_login_skip":
+                continue
             continue
 
     return {
