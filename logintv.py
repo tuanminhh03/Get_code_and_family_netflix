@@ -240,18 +240,6 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     continue_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, continue_selector)))
     safe_click(driver, continue_btn)
 
-    # Một số lúc Netflix lag nên bấm lại 1-2 lần
-    for _ in range(2):
-        time.sleep(0.5)
-        remaining = driver.find_elements(By.CSS_SELECTOR, continue_selector)
-        if not remaining:
-            break
-        try:
-            if remaining[0].is_enabled():
-                safe_click(driver, remaining[0])
-        except Exception:
-            pass
-
     otp_selector = "input[name='challengeOtp']"
 
     # Các lỗi dạng "tạm thời" -> bỏ qua account / thử lại account khác
@@ -265,6 +253,34 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
+    def check_skip_message() -> str | None:
+        message_text = _extract_netflix_message(driver)
+        if message_text and is_skip_text(message_text):
+            return message_text
+        return None
+
+    fast_detect_deadline = time.time() + 3
+    while time.time() < fast_detect_deadline:
+        message_text = check_skip_message()
+        if message_text:
+            return False, message_text, "login_skip"
+        time.sleep(0.1)
+
+    # Một số lúc Netflix lag nên bấm lại 1-2 lần
+    for _ in range(2):
+        time.sleep(0.5)
+        remaining = driver.find_elements(By.CSS_SELECTOR, continue_selector)
+        if not remaining:
+            break
+        try:
+            if remaining[0].is_enabled():
+                safe_click(driver, remaining[0])
+        except Exception:
+            pass
+
+        message_text = check_skip_message()
+        if message_text:
+            return False, message_text, "login_skip"
 
     end_time = time.time() + 60
 
