@@ -132,6 +132,12 @@ def enter_tv_code(driver, wait, tv_code):
             "đã xảy ra lỗi. hãy thử đăng nhập bằng điều khiển tv.",
         }
 
+        def is_skip_text(text: str) -> bool:
+            lowered_text = (text or "").strip().lower()
+            if not lowered_text:
+                return False
+            return any(skip_text in lowered_text for skip_text in skip_texts)
+
         start_time = time.time()
         max_wait_seconds = 60
         last_message = None
@@ -156,6 +162,9 @@ def enter_tv_code(driver, wait, tv_code):
                     if lowered in stop_texts:
                         print(" -> ❌ Sai mã TV, dừng lại.")
                         return False, "Mã bạn nhập sai vui lòng nhập lại", "invalid_tv_code"
+                    if is_skip_text(raw_text):
+                        print(" -> ⚠️ Bỏ qua lỗi điều khiển TV, thử tài khoản khác.")
+                        return False, raw_text, "tv_login_skip"
 
             title_elements = driver.find_elements(
                 By.CSS_SELECTOR,
@@ -167,7 +176,7 @@ def enter_tv_code(driver, wait, tv_code):
                 if raw_title and raw_title != last_message:
                     print(f" -> Thông báo trạng thái TV: {raw_title}")
                     last_message = raw_title
-                if lowered_title in skip_texts:
+                if is_skip_text(raw_title):
                     print(" -> ⚠️ Bỏ qua lỗi điều khiển TV, thử tài khoản khác.")
                     return False, raw_title, "tv_login_skip"
 
