@@ -770,45 +770,55 @@ def _login_tv(password: str, code: str, email: str | None = None, expected_passw
     if not re.fullmatch(r"\d{8}", code or ""):
         return {"success": False, "message": "Mã TV phải đủ 8 số."}
 
-    chosen_email = email
-    if not chosen_email:
-        record = _pick_next_tv_login_email()
-        if not record:
-            return {"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}
-        chosen_email = record.email
+    def _normalize_result(result, chosen_email):
+        # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
+        if isinstance(result, dict):
+            success = bool(result.get("success"))
+            message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+            remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
+            if remote_required:
+                _flag_tv_login_issue(
+                    chosen_email,
+                    marker=TV_REMOTE_NOTE_MARKER,
+                    note="Yêu cầu đăng nhập bằng điều khiển TV.",
+                    disable_tv_allowed=True,
+                    remove_from_rotation=True,
+                )
+            normalized = {
+                "success": success,
+                "message": message,
+                "raw": result.get("raw"),
+                "email": chosen_email,
+                "remote_login_required": remote_required,
+            }
+            # Giữ lại bất kỳ thông tin phụ khác từ backend
+            for key, value in result.items():
+                if key not in normalized:
+                    normalized[key] = value
+            return normalized
 
-    result = run_login_tv(password=password, code=code, email=chosen_email, expected_password=expected_password)
+        if isinstance(result, (tuple, list)) and result:
+            success = bool(result[0])
+            message = str(result[1]) if len(result) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+            remote_required = _is_tv_remote_login_message(message)
+            if remote_required:
+                _flag_tv_login_issue(
+                    chosen_email,
+                    marker=TV_REMOTE_NOTE_MARKER,
+                    note="Yêu cầu đăng nhập bằng điều khiển TV.",
+                    disable_tv_allowed=True,
+                    remove_from_rotation=True,
+                )
+            return {
+                "success": success,
+                "message": message,
+                "raw": result,
+                "email": chosen_email,
+                "remote_login_required": remote_required,
+            }
 
-
-    # Đảm bảo luôn trả về dict chuẩn hóa cho luồng gọi hiện có
-    if isinstance(result, dict):
-        success = bool(result.get("success"))
-        message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
-        if remote_required:
-            _flag_tv_login_issue(
-                chosen_email,
-                marker=TV_REMOTE_NOTE_MARKER,
-                note="Yêu cầu đăng nhập bằng điều khiển TV.",
-                disable_tv_allowed=True,
-                remove_from_rotation=True,
-            )
-        normalized = {
-            "success": success,
-            "message": message,
-            "raw": result.get("raw"),
-            "email": chosen_email,
-            "remote_login_required": remote_required,
-        }
-        # Giữ lại bất kỳ thông tin phụ khác từ backend
-        for key, value in result.items():
-            if key not in normalized:
-                normalized[key] = value
-        return normalized
-
-    if isinstance(result, (tuple, list)) and result:
-        success = bool(result[0])
-        message = str(result[1]) if len(result) > 1 else ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+        success = bool(result)
+        message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
         remote_required = _is_tv_remote_login_message(message)
         if remote_required:
             _flag_tv_login_issue(
@@ -826,24 +836,45 @@ def _login_tv(password: str, code: str, email: str | None = None, expected_passw
             "remote_login_required": remote_required,
         }
 
-    success = bool(result)
-    message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
-    remote_required = _is_tv_remote_login_message(message)
-    if remote_required:
-        _flag_tv_login_issue(
-            chosen_email,
-            marker=TV_REMOTE_NOTE_MARKER,
-            note="Yêu cầu đăng nhập bằng điều khiển TV.",
-            disable_tv_allowed=True,
-            remove_from_rotation=True,
-        )
-    return {
-        "success": success,
-        "message": message,
-        "raw": result,
-        "email": chosen_email,
-        "remote_login_required": remote_required,
-    }
+    attempted_emails = set()
+    last_normalized = None
+    max_attempts = 10
+
+    for _ in range(max_attempts):
+        chosen_email = email
+        if not chosen_email:
+            record = _pick_next_tv_login_email()
+            if not record:
+                break
+            chosen_email = record.email
+
+        if not chosen_email or chosen_email in attempted_emails:
+            break
+
+        attempted_emails.add(chosen_email)
+        result = run_login_tv(password=password, code=code, email=chosen_email, expected_password=expected_password)
+        normalized = _normalize_result(result, chosen_email)
+        last_normalized = normalized
+
+        if normalized.get("success"):
+            return normalized
+
+        reason = None
+        if isinstance(result, dict):
+            reason = result.get("reason")
+
+        if email:
+            return normalized
+
+        if reason in {"login_skip", "tv_login_skip"}:
+            continue
+
+        return normalized
+
+    if last_normalized:
+        return last_normalized
+
+    return {"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}
 
 
 # === WORKER (KEEP CHROME ALIVE) ===
