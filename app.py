@@ -1197,76 +1197,118 @@ def api_tv_login():
 
     # Chọn email để login TV:
     # - ưu tiên email của customer
-    # - nếu customer chưa có email thì fallback sang danh sách quay vòng
-    chosen_email = customer.email
-    if not chosen_email:
-        record = _pick_next_tv_login_email()
-        if not record:
-            return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
-        chosen_email = record.email
+    # - sau đó fallback sang danh sách quay vòng
+    candidate_entries = []
+    seen_emails = set()
+    customer_email = _normalize_email(customer.email or "")
+    if customer_email:
+        candidate_entries.append({"email": customer_email, "record": None})
+        seen_emails.add(customer_email)
+
+    rotation_records = _get_tv_login_records(limit=3, exclude_flagged=True)
+    for record in rotation_records:
+        normalized_email = _normalize_email(record.email or "")
+        if not normalized_email or normalized_email in seen_emails:
+            continue
+        candidate_entries.append({"email": normalized_email, "record": record})
+        seen_emails.add(normalized_email)
+
+    if not candidate_entries:
+        return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
 
     attempts = []
-    final_email = chosen_email
+    final_email = candidate_entries[0]["email"]
     final_raw = None
     status_code = 400
+    final_message = ""
     remote_error_seen = False
+    success = False
 
     # expected_password=password để bypass check "mật khẩu TV" hệ thống,
     # vì ở luồng user TV password chính là số điện thoại khách.
-    result = _login_tv(password=password, code=code, email=chosen_email, expected_password=password)
+    retryable_reasons = {
+        "login_skip",
+        "tv_login_skip",
+        "web_login_failed",
+        "tv_login_failed",
+        "tv_login_error",
+        "login_flow_error",
+    }
 
-    if isinstance(result, dict):
-        success = bool(result.get("success"))
-        message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
-        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
-    else:
-        success = bool(result)
-        message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
-        steps = []
+    for idx, entry in enumerate(candidate_entries, start=1):
+        chosen_email = entry["email"]
+        record = entry["record"]
+        result = _login_tv(password=password, code=code, email=chosen_email, expected_password=password)
 
-    invalid_code = _is_invalid_tv_code_message(message)
-    remote_required = bool(getattr(result, "get", lambda _k, _d=None: _d)("remote_login_required", False)) or _is_tv_remote_login_message(message)
+        if isinstance(result, dict):
+            success = bool(result.get("success"))
+            message = result.get("message") or ("Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại.")
+            steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+            reason = result.get("reason")
+            remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
+        else:
+            success = bool(result)
+            message = "Đăng nhập thành công." if success else "Mã sai, vui lòng nhập lại."
+            steps = []
+            reason = None
+            remote_required = _is_tv_remote_login_message(message)
 
-    attempt_message = (
-        "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này."
-        if remote_required else message
-    )
+        invalid_code = _is_invalid_tv_code_message(message)
 
-    attempts.append({"email": chosen_email, "success": success, "message": attempt_message, "steps": steps})
-    final_raw = result
+        attempt_message = (
+            "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này."
+            if remote_required else message
+        )
 
-    if not success and not invalid_code and not remote_required and "mật khẩu" not in message.lower():
-        _flag_tv_login_failure(chosen_email)
+        attempts.append({"email": chosen_email, "success": success, "message": attempt_message, "steps": steps})
+        final_raw = result
+        final_email = chosen_email
 
-    _log_activity(
-        customer.id,
-        requester_email="auto",
-        target_email=chosen_email,
-        kind="login_tv",
-        success=success,
-        message=f"[Lần 1] {attempt_message}",
-    )
+        if not success and not invalid_code and not remote_required and "mật khẩu" not in message.lower():
+            _flag_tv_login_failure(chosen_email)
 
-    if remote_required:
-        status_code = 400
-        final_message = attempt_message
-        remote_error_seen = True
-    elif success:
-        status_code = 200
-        final_message = f"Đăng nhập thành công bằng email {chosen_email}."
-    elif "mật khẩu" in message.lower():
-        status_code = 403
-        final_message = message
-    elif invalid_code:
-        status_code = 400
-        final_message = "Mã bạn nhập sai vui lòng nhập lại"
-    else:
-        status_code = 400
-        final_message = message
+        _log_activity(
+            customer.id,
+            requester_email="auto",
+            target_email=chosen_email,
+            kind="login_tv",
+            success=success,
+            message=f"[Lần {idx}] {attempt_message}",
+        )
+
+        if remote_required:
+            remote_error_seen = True
+            final_message = attempt_message
+            continue
+        elif success:
+            status_code = 200
+            final_message = f"Đăng nhập thành công bằng email {chosen_email}."
+            if record:
+                _mark_tv_login_email_used(record)
+            break
+        elif "mật khẩu" in message.lower():
+            status_code = 403
+            final_message = message
+            break
+        elif invalid_code:
+            status_code = 400
+            final_message = "Mã bạn nhập sai vui lòng nhập lại"
+            break
+        elif reason in retryable_reasons:
+            status_code = 400
+            final_message = message
+            continue
+        else:
+            status_code = 400
+            final_message = message
+            break
 
     if status_code != 200:
         if not ("mật khẩu" in final_message.lower() or _is_invalid_tv_code_message(final_message) or remote_error_seen):
-            final_message = f"Không thể đăng nhập TV. Đã thử: {attempts[0]['email']} -> {attempts[0]['message']}"
+            attempts_summary = "; ".join(
+                f"{item['email']} -> {item['message']}" for item in attempts
+            )
+            final_message = f"Không thể đăng nhập TV. Đã thử: {attempts_summary}"
 
     return (
         jsonify(
