@@ -184,13 +184,28 @@ def worker_process(email):
     return _login_once(email=email, tv_code=TV_CODE_TO_ENTER)
 
 
+def _extract_netflix_message(driver):
+    selectors = [
+        "div.nf-message-contents[data-uia='UIMessage-content']",
+        "div[data-uia='UIMessage-content']",
+    ]
+    for selector in selectors:
+        elements = driver.find_elements(By.CSS_SELECTOR, selector)
+        if elements:
+            text = (elements[0].text or "").strip()
+            if text:
+                return text
+    return None
+
+
 def _netflix_request_login_code_new_flow(driver, wait, email: str):
     """
     FLOW MỚI:
     1) https://www.netflix.com/vn/login
     2) điền userLoginId
     3) bấm nút Tiếp tục (data-uia="continue-button")
-    4) sau đó vào trang có nút "Sử dụng mã đăng nhập" -> bấm -> bấm "Gửi mã đăng nhập"
+    4) Netflix tự gửi mã đăng nhập về email, chờ đến màn nhập mã
+    Trả về (success, message, reason) để xử lý bỏ qua tài khoản không hỗ trợ mã đăng nhập.
     """
     driver.get("https://www.netflix.com/vn/login")
 
@@ -203,18 +218,31 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     continue_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='continue-button']")))
     safe_click(driver, continue_btn)
 
-    # Trang tiếp theo: bấm "Sử dụng mã đăng nhập"
-    # (Netflix có thể render chậm; cho wait riêng)
-    btn_use_code = wait.until(
-        EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Sử dụng mã đăng nhập']"))
-    )
-    safe_click(driver, btn_use_code)
+    def is_ready(_driver):
+        if _driver.find_elements(By.CSS_SELECTOR, "input[name='challengeOtp']"):
+            return "otp"
+        if _driver.find_elements(By.NAME, "password"):
+            return "password"
+        message = _extract_netflix_message(_driver)
+        if message:
+            return ("message", message)
+        return False
 
-    # Bấm "Gửi mã đăng nhập"
-    btn_send = wait.until(
-        EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Gửi mã đăng nhập']"))
-    )
-    safe_click(driver, btn_send)
+    state = wait.until(is_ready)
+    if isinstance(state, tuple) and state[0] == "message":
+        message_text = state[1]
+        lowered = message_text.lower()
+        if "không tìm thấy" in lowered or "can't find" in lowered:
+            return False, message_text, "account_not_found"
+        return False, message_text, "login_flow_error"
+
+    if state == "password":
+        return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
+
+    if state == "otp":
+        return True, None, None
+
+    return False, "Không thể mở màn nhập mã đăng nhập.", "login_code_unavailable"
 
 
 def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
@@ -234,7 +262,17 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
     try:
         # --- BƯỚC 1: NETFLIX WEB LOGIN (FLOW MỚI) ---
         push_step("Đang mở trang đăng nhập Netflix.")
-        _netflix_request_login_code_new_flow(driver, wait, email)
+        login_flow_ok, login_flow_message, login_flow_reason = _netflix_request_login_code_new_flow(driver, wait, email)
+        if not login_flow_ok:
+            message = login_flow_message or "Không thể yêu cầu mã đăng nhập."
+            push_step(f"Không thể yêu cầu mã đăng nhập: {message}")
+            return {
+                "success": False,
+                "message": message,
+                "reason": login_flow_reason,
+                "email": email,
+                "steps": progress or [],
+            }
         netflix_handle = driver.current_window_handle
         push_step("Đã gửi yêu cầu mã đăng nhập.")
 
