@@ -344,13 +344,16 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
             else:
                 push_step(f"Đăng nhập TV thất bại: {tv_message}")
 
-            return {
+            result = {
                 "success": tv_success,
                 "message": tv_message,
                 "reason": tv_reason,
                 "email": email,
                 "steps": progress or [],
             }
+            if tv_reason == "tv_login_skip":
+                push_step("Gặp lỗi đăng nhập bằng điều khiển TV, sẽ đổi sang tài khoản khác.")
+            return result
 
         push_step("Không gửi được mã Netflix hoặc không đăng nhập web thành công, chuyển sang tài khoản khác.")
         return {
@@ -414,6 +417,8 @@ def login_tv(password: str, code: str, email: str | None = None, expected_passwo
                 return result
             if result.get("reason") == "invalid_tv_code":
                 return result
+            if result.get("reason") == "tv_login_skip":
+                continue
             continue
 
     return {
