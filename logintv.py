@@ -198,6 +198,9 @@ def _extract_netflix_message(driver):
     selectors = [
         "div.nf-message-contents[data-uia='UIMessage-content']",
         "div[data-uia='UIMessage-content']",
+        "div.textWithTags",
+        "div[role='alert']",
+        "div[role='alert'] div",
     ]
     for selector in selectors:
         elements = driver.find_elements(By.CSS_SELECTOR, selector)
@@ -250,6 +253,13 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
     try:
+        skip_deadline = time.time() + 6
+        while time.time() < skip_deadline:
+            message_text = _extract_netflix_message(driver)
+            if message_text and is_skip_text(message_text):
+                return False, message_text, "login_skip"
+            time.sleep(0.5)
+
         wait_short = WebDriverWait(driver, 8)
         wait_short.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
         return True, None, None
