@@ -406,11 +406,13 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
 
 def _iter_emails(email: str | None):
     seen = set()
-    candidates = []
     if email and email.strip():
-        candidates.append(email.strip())
-    candidates.extend(INPUT_EMAILS)
-    for item in candidates:
+        candidate = email.strip()
+        if candidate not in seen:
+            seen.add(candidate)
+            yield candidate
+        return
+    for item in INPUT_EMAILS:
         candidate = (item or "").strip()
         if candidate and candidate not in seen:
             seen.add(candidate)
