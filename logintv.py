@@ -463,7 +463,7 @@ def login_tv(password: str, code: str, email: str | None = None, expected_passwo
 
     return {
         "success": False,
-        "message": "Không thể đăng nhập TV.",
+        "message": (last_result.get("message") if last_result else None) or "Không thể đăng nhập TV.",
         "email": last_result.get("email") if last_result else None,
         "steps": last_result.get("steps") if last_result else [],
     }
