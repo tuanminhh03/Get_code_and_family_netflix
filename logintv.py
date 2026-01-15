@@ -217,16 +217,13 @@ def _extract_netflix_message(driver):
 
 def _netflix_request_login_code_new_flow(driver, wait, email: str):
     """
-    FLOW MỚI (theo yêu cầu):
-    1) https://www.netflix.com/vn/login
-    2) điền userLoginId
-    3) bấm nút Tiếp tục (data-uia="continue-button")
-    4) Sau đó có thể gặp 1 trong các trạng thái:
-       - Netflix tự hiện màn nhập OTP (input[name='challengeOtp']) => OK
-       - Không hiện ô nhập mã => bỏ qua email
-       - Hoặc nó bắt nhập password => bỏ qua email
-
-    Trả về (success, message, reason).
+    FLOW MỚI (tối ưu phát hiện nhanh):
+    - Sau khi bấm Continue:
+      + Chờ nhanh 8s để thấy OTP hoặc thấy password hoặc thấy message lỗi.
+      + Nếu không thấy gì -> SKIP sớm, đổi tài khoản khác.
+      + Nếu thấy message "vui lòng thử lại..." -> SKIP.
+      + Nếu thấy password -> SKIP.
+      + Nếu thấy OTP -> OK.
     """
     driver.get("https://www.netflix.com/vn/login")
 
@@ -235,14 +232,13 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     email_input.clear()
     email_input.send_keys(email)
 
-    # Bấm Tiếp tục
     continue_selector = "button[data-uia='continue-button']"
     continue_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, continue_selector)))
     safe_click(driver, continue_btn)
 
     otp_selector = "input[name='challengeOtp']"
 
-    # Các lỗi dạng "tạm thời" -> bỏ qua account / thử lại account khác
+    # Các lỗi dạng "tạm thời" -> bỏ qua account / thử account khác
     skip_texts = {
         "đã xảy ra lỗi. vui lòng thử lại trong vài phút.",
     }
@@ -253,76 +249,49 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
-    # ---- RESOLVED: dùng helper để detect nhanh message lỗi/skip ----
     def check_skip_message() -> str | None:
         message_text = _extract_netflix_message(driver)
         if message_text and is_skip_text(message_text):
             return message_text
         return None
 
-    # Detect nhanh 1-3 giây đầu sau khi bấm Continue
-    fast_detect_deadline = time.time() + 3
-    while time.time() < fast_detect_deadline:
-        message_text = check_skip_message()
-        if message_text:
-            return False, message_text, "login_skip"
-        time.sleep(0.1)
+    def any_visible(css: str) -> bool:
+        els = driver.find_elements(By.CSS_SELECTOR, css)
+        return any(e.is_displayed() for e in els)
 
-    # Một số lúc Netflix lag nên bấm lại 1-2 lần
-    for _ in range(2):
-        time.sleep(0.5)
-        remaining = driver.find_elements(By.CSS_SELECTOR, continue_selector)
-        if not remaining:
-            break
-        try:
-            if remaining[0].is_enabled():
-                safe_click(driver, remaining[0])
-        except Exception:
-            pass
+    def any_password_visible() -> bool:
+        els = driver.find_elements(By.NAME, "password")
+        return any(e.is_displayed() for e in els)
 
-        message_text = check_skip_message()
-        if message_text:
-            return False, message_text, "login_skip"
-
-    # ---- phần phía dưới giữ nguyên logic chờ OTP / password / message ----
-    end_time = time.time() + 60
+    # --- PHÁT HIỆN NHANH (8 giây) ---
+    fast_deadline = time.time() + 8
     last_message = None
 
-    def is_visible(elements) -> bool:
-        return any(element.is_displayed() for element in elements)
-
-    while time.time() < end_time:
-        # 1) OTP đã hiện
-        if is_visible(driver.find_elements(By.CSS_SELECTOR, otp_selector)):
+    while time.time() < fast_deadline:
+        # 1) Nếu OTP hiện -> OK ngay
+        if any_visible(otp_selector):
             return True, None, None
 
-        # 2) Bắt nhập password (chỉ khi hiển thị thực sự)
-        password_fields = driver.find_elements(By.NAME, "password")
-        if password_fields and is_visible(password_fields):
+        # 2) Nếu bị hỏi password -> skip ngay
+        if any_password_visible():
             return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_skip"
 
-        # 3) Message lỗi
-        message_text = _extract_netflix_message(driver)
-        if message_text:
-            last_message = message_text
-            lowered = message_text.lower()
-
+        # 3) Nếu có message dạng "thử lại..." -> skip ngay
+        msg = _extract_netflix_message(driver)
+        if msg:
+            last_message = msg
+            if is_skip_text(msg):
+                return False, msg, "login_skip"
+            # Một số case "không tìm thấy" cũng nên trả về sớm
+            lowered = msg.lower()
             if "không tìm thấy" in lowered or "can't find" in lowered:
-                return False, message_text, "account_not_found"
+                return False, msg, "account_not_found"
 
-            if is_skip_text(message_text):
-                return False, message_text, "login_skip"
+        time.sleep(0.15)
 
-        time.sleep(0.5)
-
-    # Hết thời gian chờ
-    if last_message:
-        if is_skip_text(last_message):
-            return False, last_message, "login_skip"
-        return False, last_message, "login_flow_error"
-
-    # Không có message gì rõ ràng
-    return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_skip"
+    # --- Nếu qua 8s vẫn không có OTP/password/message rõ ràng => SKIP SỚM ---
+    # (Bạn có thể nâng 8s lên 10-12s nếu mạng chậm)
+    return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục (phát hiện nhanh), đổi tài khoản khác.", "login_skip"
 
 def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
     def push_step(message: str) -> None:
