@@ -285,6 +285,7 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
         if not login_flow_ok:
             message = login_flow_message or "Không thể yêu cầu mã đăng nhập."
             push_step(f"Không thể yêu cầu mã đăng nhập: {message}")
+            push_step("Không gửi được mã Netflix, sẽ chuyển sang tài khoản khác.")
             return {
                 "success": False,
                 "message": message,
@@ -351,9 +352,11 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
                 "steps": progress or [],
             }
 
+        push_step("Không gửi được mã Netflix hoặc không đăng nhập web thành công, chuyển sang tài khoản khác.")
         return {
             "success": False,
             "message": "Không qua được bước đăng nhập Web.",
+            "reason": "web_login_failed",
             "email": email,
             "steps": progress or [],
         }
