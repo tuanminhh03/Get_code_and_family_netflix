@@ -198,6 +198,7 @@ def _extract_netflix_message(driver):
     selectors = [
         "div.nf-message-contents[data-uia='UIMessage-content']",
         "div[data-uia='UIMessage-content']",
+        "div.textWithTags",
     ]
     for selector in selectors:
         elements = driver.find_elements(By.CSS_SELECTOR, selector)
