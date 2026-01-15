@@ -265,6 +265,12 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
+    fast_detect_deadline = time.time() + 5
+    while time.time() < fast_detect_deadline:
+        message_text = _extract_netflix_message(driver)
+        if message_text and is_skip_text(message_text):
+            return False, message_text, "login_skip"
+        time.sleep(0.2)
 
     end_time = time.time() + 60
 
