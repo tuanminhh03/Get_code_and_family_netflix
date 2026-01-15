@@ -217,15 +217,14 @@ def _extract_netflix_message(driver):
 
 def _netflix_request_login_code_new_flow(driver, wait, email: str):
     """
-    FLOW MỚI (đã gộp 2 nhánh):
+    FLOW MỚI (theo yêu cầu):
     1) https://www.netflix.com/vn/login
     2) điền userLoginId
     3) bấm nút Tiếp tục (data-uia="continue-button")
     4) Sau đó có thể gặp 1 trong các trạng thái:
-       - Netflix tự hiện màn nhập OTP (input[name='challengeOtp'])
-       - Có nút "Sử dụng mã đăng nhập" -> bấm -> rồi bấm "Gửi mã đăng nhập"
-       - Có sẵn nút "Gửi mã đăng nhập" (không cần bấm Use)
-       - Hoặc nó bắt nhập password => không dùng được mã đăng nhập
+       - Netflix tự hiện màn nhập OTP (input[name='challengeOtp']) => OK
+       - Không hiện ô nhập mã => bỏ qua email
+       - Hoặc nó bắt nhập password => bỏ qua email
 
     Trả về (success, message, reason).
     """
@@ -253,8 +252,6 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
         except Exception:
             pass
 
-    use_code_xpath = "//button[normalize-space()='Sử dụng mã đăng nhập' or normalize-space()='Use a sign-in code']"
-    send_code_xpath = "//button[normalize-space()='Gửi mã đăng nhập' or normalize-space()='Send sign-in code']"
     otp_selector = "input[name='challengeOtp']"
 
     # Các lỗi dạng "tạm thời" -> bỏ qua account / thử lại account khác
@@ -268,9 +265,8 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
-    end_time = time.time() + 20
+    end_time = time.time() + 15
     last_message = None
-    saw_generic_error = False  # nhánh ignore lỗi tạm thời: gặp lỗi nhưng chờ Netflix chuyển state
 
     while time.time() < end_time:
         # 1) OTP đã hiện
@@ -279,7 +275,7 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
 
         # 2) Bắt nhập password
         if driver.find_elements(By.NAME, "password"):
-            return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
+            return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_skip"
 
         # 3) Message lỗi
         message_text = _extract_netflix_message(driver)
@@ -293,27 +289,6 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             if is_skip_text(message_text):
                 return False, message_text, "login_skip"
 
-            # Gặp lỗi chung thì đừng return ngay: chờ Netflix chuyển trạng thái (giống nhánh codex)
-            saw_generic_error = True
-
-        # 4) Có nút send code trực tiếp
-        if driver.find_elements(By.XPATH, send_code_xpath):
-            btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
-            safe_click(driver, btn_send)
-            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
-            return True, None, None
-
-        # 5) Có nút use code -> rồi send code
-        if driver.find_elements(By.XPATH, use_code_xpath):
-            btn_use_code = wait.until(EC.element_to_be_clickable((By.XPATH, use_code_xpath)))
-            safe_click(driver, btn_use_code)
-
-            btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
-            safe_click(driver, btn_send)
-
-            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
-            return True, None, None
-
         time.sleep(0.5)
 
     # Hết thời gian chờ
@@ -324,7 +299,7 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
         return False, last_message, "login_flow_error"
 
     # Không có message gì rõ ràng
-    return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_code_unavailable"
+    return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_skip"
 
 
 def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
