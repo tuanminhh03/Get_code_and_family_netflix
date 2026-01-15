@@ -227,62 +227,37 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
 
     use_code_xpath = "//button[normalize-space()='Sử dụng mã đăng nhập' or normalize-space()='Use a sign-in code']"
     send_code_xpath = "//button[normalize-space()='Gửi mã đăng nhập' or normalize-space()='Send sign-in code']"
+    otp_selector = "input[name='challengeOtp']"
 
-    def is_ready(_driver):
-        # 1) OTP input đã hiện
-        if _driver.find_elements(By.CSS_SELECTOR, "input[name='challengeOtp']"):
-            return "otp"
+    try:
+        wait_short = WebDriverWait(driver, 8)
+        wait_short.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
+        return True, None, None
+    except TimeoutException:
+        pass
 
-        # 2) Có nút gửi mã trực tiếp
-        if _driver.find_elements(By.XPATH, send_code_xpath):
-            return "send_code"
+    if driver.find_elements(By.NAME, "password"):
+        return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
 
-        # 3) Có nút "Sử dụng mã đăng nhập"
-        if _driver.find_elements(By.XPATH, use_code_xpath):
-            return "use_code"
-
-        # 4) Bắt nhập password
-        if _driver.find_elements(By.NAME, "password"):
-            return "password"
-
-        # 5) Có message lỗi
-        message = _extract_netflix_message(_driver)
-        if message:
-            return ("message", message)
-
-        return False
-
-    state = wait.until(is_ready)
-
-    # Nếu có message lỗi
-    if isinstance(state, tuple) and state[0] == "message":
-        message_text = state[1]
+    message_text = _extract_netflix_message(driver)
+    if message_text:
         lowered = message_text.lower()
         if "không tìm thấy" in lowered or "can't find" in lowered:
             return False, message_text, "account_not_found"
         return False, message_text, "login_flow_error"
 
-    # Nếu bắt nhập password => không dùng login code
-    if state == "password":
-        return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
-
-    # Nếu đã vào màn OTP
-    if state == "otp":
-        return True, None, None
-
-    # Nếu có nút gửi mã luôn
-    if state == "send_code":
+    if driver.find_elements(By.XPATH, send_code_xpath):
         btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
         safe_click(driver, btn_send)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
         return True, None, None
 
-    # Nếu cần bấm "Sử dụng mã đăng nhập" rồi mới thấy "Gửi mã đăng nhập"
-    if state == "use_code":
+    if driver.find_elements(By.XPATH, use_code_xpath):
         btn_use_code = wait.until(EC.element_to_be_clickable((By.XPATH, use_code_xpath)))
         safe_click(driver, btn_use_code)
-
         btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, send_code_xpath)))
         safe_click(driver, btn_send)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
         return True, None, None
 
     return False, "Không thể mở màn nhập mã đăng nhập.", "login_code_unavailable"
