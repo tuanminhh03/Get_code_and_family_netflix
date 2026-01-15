@@ -253,12 +253,14 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False
         return any(skip_text in lowered_text for skip_text in skip_texts)
 
+    # ---- RESOLVED: dùng helper để detect nhanh message lỗi/skip ----
     def check_skip_message() -> str | None:
         message_text = _extract_netflix_message(driver)
         if message_text and is_skip_text(message_text):
             return message_text
         return None
 
+    # Detect nhanh 1-3 giây đầu sau khi bấm Continue
     fast_detect_deadline = time.time() + 3
     while time.time() < fast_detect_deadline:
         message_text = check_skip_message()
@@ -282,9 +284,8 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
         if message_text:
             return False, message_text, "login_skip"
 
+    # ---- phần phía dưới giữ nguyên logic chờ OTP / password / message ----
     end_time = time.time() + 60
-
-
     last_message = None
 
     def is_visible(elements) -> bool:
@@ -320,11 +321,8 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
             return False, last_message, "login_skip"
         return False, last_message, "login_flow_error"
 
-
     # Không có message gì rõ ràng
     return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_skip"
-
-
 
 def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
     def push_step(message: str) -> None:
