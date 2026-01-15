@@ -1,10 +1,10 @@
 import os
 import re
 import time
-import random 
+import random
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options 
+from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
@@ -16,27 +16,27 @@ import config
 
 # ----------------- CẤU HÌNH -----------------
 INPUT_EMAILS = [
-    "douinex+melida@gmail.com",
+    # "example@gmail.com",
     # Thêm email khác...
 ]
 
-# ĐIỀN MÃ 8 SỐ CỦA TV VÀO ĐÂY (Dạng chuỗi ký tự)
-TV_CODE_TO_ENTER = "12345678" 
+TV_CODE_TO_ENTER = "12345678"
 
 CTV_CODES = [
-    "CTV0061", "CTV0070", "CTV0071", "CTV0072", "CTV0082", "CTV0088", 
-    "CTV0090", "CTV0103", "CTV0102", "CTV0112", "CTV0122", "CTV0133", 
+    "CTV0061", "CTV0070", "CTV0071", "CTV0072", "CTV0082", "CTV0088",
+    "CTV0090", "CTV0103", "CTV0102", "CTV0112", "CTV0122", "CTV0133",
     "CTV0136", "CTV0148", "CTV0153", "CTV0163", "CTV0171", "CTV0179"
 ]
 
-MAX_RETRIES = 3             
-MAX_CONCURRENT_PROCESSES = 2 
+MAX_RETRIES = 3
+MAX_CONCURRENT_PROCESSES = 2
 # ------------------------------------------------
 
 
 def _get_tv_password():
     """Lấy mật khẩu TV riêng (nếu đặt). Không fallback ADMIN để tránh chặn nhầm."""
     return os.getenv("TV_PASSWORD") or getattr(config, "TV_PASSWORD", "") or ""
+
 
 def _resolve_email(email: str | None):
     if email and email.strip():
@@ -47,11 +47,13 @@ def _resolve_email(email: str | None):
             return candidate
     return None
 
+
 def safe_click(driver, element):
     try:
         element.click()
     except Exception:
         driver.execute_script("arguments[0].click();", element)
+
 
 # --- HÀM LẤY VÀ DÁN MÃ TUKITECH ---
 def get_and_paste_code(driver, wait, netflix_handle, tukitech_handle):
@@ -60,34 +62,38 @@ def get_and_paste_code(driver, wait, netflix_handle, tukitech_handle):
         BTN_SEARCH_ID = "search-btn"
         search_btn = wait.until(EC.element_to_be_clickable((By.ID, BTN_SEARCH_ID)))
         safe_click(driver, search_btn)
-        
+
         CODE_CONTENT_CSS = "div.bg-light > span.text-dark"
         code_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, CODE_CONTENT_CSS)))
-        code_text = code_element.get_attribute('innerText').strip()
-        
+        code_text = code_element.get_attribute("innerText").strip()
+
         if not code_text.isdigit() or len(code_text) < 4:
-            return False 
-        
+            return False
+
         driver.switch_to.window(netflix_handle)
-        CODE_INPUT_FINAL_CSS = "input[name='challengeOtp']" 
+
+        # Netflix OTP input
+        CODE_INPUT_FINAL_CSS = "input[name='challengeOtp']"
         final_code_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, CODE_INPUT_FINAL_CSS)))
-        final_code_field.clear() 
+        final_code_field.clear()
         final_code_field.send_keys(code_text)
-        
+
+        # Submit login
         BTN_LOGIN_FINAL_XPATH = "//button[normalize-space()='Đăng nhập' or @type='submit']"
         login_btn = wait.until(EC.element_to_be_clickable((By.XPATH, BTN_LOGIN_FINAL_XPATH)))
         safe_click(driver, login_btn)
-        
-        time.sleep(4) 
-        
+
+        time.sleep(4)
+
         # Kiểm tra nếu vào được Web thành công
-        if "browse" in driver.current_url or "profiles" in driver.current_url:
+        cur = (driver.current_url or "").lower()
+        if ("browse" in cur) or ("profiles" in cur):
             return True
-        else:
-            return False 
-            
+        return False
+
     except Exception:
         return False
+
 
 # --- HÀM NHẬP MÃ TV (Logic mới) ---
 def enter_tv_code(driver, wait, tv_code):
@@ -95,13 +101,11 @@ def enter_tv_code(driver, wait, tv_code):
         print(" -> Đang truy cập trang nhập mã TV8...")
         driver.get("https://www.netflix.com/tv8")
 
-        # Đảm bảo mã là chuỗi và đủ 8 ký tự
         code_str = str(tv_code).strip()
         if len(code_str) != 8 or not code_str.isdigit():
             print(f"LỖI: Mã TV phải có đúng 8 số. Mã hiện tại: {code_str}")
             return False, "Mã TV phải có đúng 8 số.", "invalid_input"
 
-        # Vòng lặp điền từng số vào 8 ô input riêng biệt
         for i in range(8):
             digit = code_str[i]
             input_selector = f"input[data-uia='pin-number-{i}']"
@@ -117,7 +121,6 @@ def enter_tv_code(driver, wait, tv_code):
         )
         safe_click(driver, submit_btn)
 
-        # Các thông báo "sai mã" cần dừng ngay
         stop_texts = {
             "that code wasn't right. try again.",
             "that code isn't right. try again.",
@@ -128,7 +131,6 @@ def enter_tv_code(driver, wait, tv_code):
             "đã xảy ra lỗi. hãy thử đăng nhập bằng điều khiển tv.",
         }
 
-        # Chờ đến khi thành công hoặc nhận thông báo sai mã cụ thể
         start_time = time.time()
         max_wait_seconds = 60
         last_message = None
@@ -146,13 +148,10 @@ def enter_tv_code(driver, wait, tv_code):
                 raw_text = (error_elements[0].text or "").strip()
                 if raw_text:
                     lowered = raw_text.lower()
-
-                    # Chỉ print khi message thay đổi để tránh spam log
                     if raw_text != last_message:
                         print(f" -> Thông báo lỗi trên trang TV: {raw_text}")
                         last_message = raw_text
 
-                    # Nếu đúng message "mã sai" thì trả về luôn
                     if lowered in stop_texts:
                         print(" -> ❌ Sai mã TV, dừng lại.")
                         return False, "Mã bạn nhập sai vui lòng nhập lại", "invalid_tv_code"
@@ -185,53 +184,78 @@ def worker_process(email):
     return _login_once(email=email, tv_code=TV_CODE_TO_ENTER)
 
 
+def _netflix_request_login_code_new_flow(driver, wait, email: str):
+    """
+    FLOW MỚI:
+    1) https://www.netflix.com/vn/login
+    2) điền userLoginId
+    3) bấm nút Tiếp tục (data-uia="continue-button")
+    4) sau đó vào trang có nút "Sử dụng mã đăng nhập" -> bấm -> bấm "Gửi mã đăng nhập"
+    """
+    driver.get("https://www.netflix.com/vn/login")
+
+    # Điền email (đừng dùng id :r0: vì thay đổi liên tục)
+    email_input = wait.until(EC.presence_of_element_located((By.NAME, "userLoginId")))
+    email_input.clear()
+    email_input.send_keys(email)
+
+    # Bấm Tiếp tục
+    continue_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='continue-button']")))
+    safe_click(driver, continue_btn)
+
+    # Trang tiếp theo: bấm "Sử dụng mã đăng nhập"
+    # (Netflix có thể render chậm; cho wait riêng)
+    btn_use_code = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Sử dụng mã đăng nhập']"))
+    )
+    safe_click(driver, btn_use_code)
+
+    # Bấm "Gửi mã đăng nhập"
+    btn_send = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Gửi mã đăng nhập']"))
+    )
+    safe_click(driver, btn_send)
+
+
 def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
     def push_step(message: str) -> None:
         if progress is not None:
             progress.append(message)
 
     chrome_options = Options()
-    chrome_options.add_experimental_option("detach", True) 
+    chrome_options.add_experimental_option("detach", True)
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
-    
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+
     selected_ctv = random.choice(CTV_CODES)
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     wait = WebDriverWait(driver, 15)
-    
+
     try:
-        # --- BƯỚC 1: NETFLIX WEB LOGIN ---
+        # --- BƯỚC 1: NETFLIX WEB LOGIN (FLOW MỚI) ---
         push_step("Đang mở trang đăng nhập Netflix.")
-        driver.get("https://www.netflix.com/vn/login")
+        _netflix_request_login_code_new_flow(driver, wait, email)
         netflix_handle = driver.current_window_handle
-        
-        btn_use_code = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Sử dụng mã đăng nhập']")))
-        safe_click(driver, btn_use_code)
-        
-        wait.until(EC.presence_of_element_located((By.NAME, "userLoginId"))).send_keys(email)
-        
-        btn_send = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Gửi mã đăng nhập']")))
-        safe_click(driver, btn_send)
         push_step("Đã gửi yêu cầu mã đăng nhập.")
-        
-        time.sleep(2) 
+
+        time.sleep(2)
 
         # --- BƯỚC 2: TUKITECH ---
         push_step("Đang lấy mã đăng nhập từ Tukitech.")
         driver.execute_script("window.open('');")
         tukitech_handle = [h for h in driver.window_handles if h != netflix_handle][0]
         driver.switch_to.window(tukitech_handle)
-        
+
         driver.get("https://tukitech.com/user_management/customer_login/")
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Nhập tên đăng nhập']"))).send_keys(selected_ctv)
         safe_click(driver, wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Tiếp tục']"))))
-        
+
         wait.until(EC.url_to_be("https://tukitech.com/email_search/"))
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='example@domain.com']"))).send_keys(email)
-        
+
         dropdown = wait.until(EC.presence_of_element_located((By.ID, "condition")))
         Select(dropdown).select_by_visible_text("Netflix: Mã Đăng Nhập")
-        
+
         # --- BƯỚC 3: RETRY LOOP & XỬ LÝ TV ---
         print(f"[{email}] Bắt đầu quy trình...")
         push_step("Đang xác thực tài khoản trên Netflix.")
@@ -239,13 +263,13 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
 
         for attempt in range(1, MAX_RETRIES + 1):
             login_web_success = get_and_paste_code(driver, wait, netflix_handle, tukitech_handle)
-            
+
             if login_web_success:
                 print(f"[{email}] -> Đăng nhập Web OK.")
                 push_step("Đăng nhập web thành công.")
-                break 
-            
-            elif attempt < MAX_RETRIES:
+                break
+
+            if attempt < MAX_RETRIES:
                 print(f"[{email}] -> Web Login thất bại (Lần {attempt}). Thử lại sau 15s...")
                 push_step(f"Đăng nhập web thất bại, thử lại lần {attempt + 1}.")
                 driver.switch_to.window(tukitech_handle)
@@ -256,10 +280,12 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
             driver.switch_to.window(netflix_handle)
             push_step("Đang nhập mã TV.")
             tv_success, tv_message, tv_reason = enter_tv_code(driver, wait, tv_code)
+
             if tv_success:
                 push_step("Đăng nhập TV thành công.")
             else:
                 push_step(f"Đăng nhập TV thất bại: {tv_message}")
+
             return {
                 "success": tv_success,
                 "message": tv_message,
@@ -336,6 +362,7 @@ def login_tv(password: str, code: str, email: str | None = None, expected_passwo
         "email": last_result.get("email") if last_result else None,
         "steps": last_result.get("steps") if last_result else [],
     }
+
 
 if __name__ == "__main__":
     tasks = [e.strip() for e in INPUT_EMAILS if e.strip()]
