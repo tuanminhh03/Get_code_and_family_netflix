@@ -132,6 +132,12 @@ def enter_tv_code(driver, wait, tv_code):
             "đã xảy ra lỗi. hãy thử đăng nhập bằng điều khiển tv.",
         }
 
+        def is_skip_text(text: str) -> bool:
+            lowered_text = (text or "").strip().lower()
+            if not lowered_text:
+                return False
+            return any(skip_text in lowered_text for skip_text in skip_texts)
+
         start_time = time.time()
         max_wait_seconds = 60
         last_message = None
@@ -156,6 +162,9 @@ def enter_tv_code(driver, wait, tv_code):
                     if lowered in stop_texts:
                         print(" -> ❌ Sai mã TV, dừng lại.")
                         return False, "Mã bạn nhập sai vui lòng nhập lại", "invalid_tv_code"
+                    if is_skip_text(raw_text):
+                        print(" -> ⚠️ Bỏ qua lỗi điều khiển TV, thử tài khoản khác.")
+                        return False, raw_text, "tv_login_skip"
 
             title_elements = driver.find_elements(
                 By.CSS_SELECTOR,
@@ -167,7 +176,7 @@ def enter_tv_code(driver, wait, tv_code):
                 if raw_title and raw_title != last_message:
                     print(f" -> Thông báo trạng thái TV: {raw_title}")
                     last_message = raw_title
-                if lowered_title in skip_texts:
+                if is_skip_text(raw_title):
                     print(" -> ⚠️ Bỏ qua lỗi điều khiển TV, thử tài khoản khác.")
                     return False, raw_title, "tv_login_skip"
 
@@ -230,11 +239,24 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     send_code_xpath = "//button[normalize-space()='Gửi mã đăng nhập' or normalize-space()='Send sign-in code']"
     otp_selector = "input[name='challengeOtp']"
 
+    skip_texts = {
+        "đã xảy ra lỗi. vui lòng thử lại trong vài phút.",
+    }
+
+    def is_skip_text(text: str) -> bool:
+        lowered_text = (text or "").strip().lower()
+        if not lowered_text:
+            return False
+        return any(skip_text in lowered_text for skip_text in skip_texts)
+
     try:
         wait_short = WebDriverWait(driver, 8)
         wait_short.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
         return True, None, None
     except TimeoutException:
+        message_text = _extract_netflix_message(driver)
+        if message_text and is_skip_text(message_text):
+            return False, message_text, "login_skip"
         return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_code_unavailable"
 
     if driver.find_elements(By.NAME, "password"):
@@ -245,6 +267,8 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
         lowered = message_text.lower()
         if "không tìm thấy" in lowered or "can't find" in lowered:
             return False, message_text, "account_not_found"
+        if is_skip_text(message_text):
+            return False, message_text, "login_skip"
         return False, message_text, "login_flow_error"
 
     if driver.find_elements(By.XPATH, send_code_xpath):
@@ -418,6 +442,8 @@ def login_tv(password: str, code: str, email: str | None = None, expected_passwo
             if result.get("reason") == "invalid_tv_code":
                 return result
             if result.get("reason") == "tv_login_skip":
+                continue
+            if result.get("reason") == "login_skip":
                 continue
             continue
 
