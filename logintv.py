@@ -271,13 +271,17 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
 
     last_message = None
 
+    def is_visible(elements) -> bool:
+        return any(element.is_displayed() for element in elements)
+
     while time.time() < end_time:
         # 1) OTP đã hiện
-        if driver.find_elements(By.CSS_SELECTOR, otp_selector):
+        if is_visible(driver.find_elements(By.CSS_SELECTOR, otp_selector)):
             return True, None, None
 
-        # 2) Bắt nhập password
-        if driver.find_elements(By.NAME, "password"):
+        # 2) Bắt nhập password (chỉ khi hiển thị thực sự)
+        password_fields = driver.find_elements(By.NAME, "password")
+        if password_fields and is_visible(password_fields):
             return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_skip"
 
         # 3) Message lỗi
