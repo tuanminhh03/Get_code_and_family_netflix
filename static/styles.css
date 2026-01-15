@@ -328,6 +328,16 @@ input:focus{
   white-space:pre-wrap;
   color:var(--text);
 }
+.result-note{
+  margin-top:12px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px dashed #2e416b;
+  background:#0b152e;
+  color:#cfe0ff;
+  font-size:13px;
+  line-height:1.5;
+}
 
 /* =========================
    Field helper line-up

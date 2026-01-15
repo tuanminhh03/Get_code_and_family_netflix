@@ -126,6 +126,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const linkHtml = linkVisible ? `<div class="result-line"><strong>${linkLabel}:</strong> <a href="${link}" target="_blank" rel="noopener noreferrer" class="result-link">${link}</a></div>` : '';
     const safeContent = content ? escapeHtml(content) : '';
     const contentHtml = contentVisible ? `<div class="result-line"><strong>Nội dung:</strong> <pre class="result-content">${safeContent}</pre></div>` : '';
+    const loginNote = kind === 'login_code'
+      ? `<div class="result-note">Sau khi lấy mã từ TukiTech, chỉ cần dán mã vào Netflix là tự đăng nhập (không cần bấm nút). Nếu chuyển sang <span class="mono">netflix.com/browse</span> là đăng nhập thành công; nếu không được hãy lấy mã mới trên TukiTech.</div>`
+      : '';
     if (!resEl) return;
 
     resEl.innerHTML = `<div class="alert success">
@@ -134,6 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ${linkHtml}
         ${contentHtml}
         ${timeHtml}
+        ${loginNote}
         <div class="actions-row">
           ${showCode ? `<button id="copyCodeBtn" class="btn small">Sao chép mã</button>` : ''}
           ${linkVisible ? `<button id="openLinkBtn" class="btn small">Mở link</button>` : ''}
@@ -218,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return showSuccessBlock({ code: '', link: '', time, content: rawContent, kind });
         }
         if (!displayCode) {
-          return showWarn('Chưa có mã đăng nhập, vui lòng bấm lại.');
+          return showWarn('Chưa có mã đăng nhập, vui lòng bấm lại hoặc lấy lại mã trên TukiTech.');
         }
       } else if (kind === 'verify_link') {
         displayCode = null;
@@ -229,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!displayCode && !displayLink) {
         const fallbackMsg = kind === 'login_code'
-          ? 'Chưa có mã đăng nhập, vui lòng bấm lại.'
+          ? 'Chưa có mã đăng nhập, vui lòng bấm lại hoặc lấy lại mã trên TukiTech.'
           : 'Chưa có mã hộ gia đình, hãy bấm lại.';
         if (rawContent) {
           return showSuccessBlock({ code: '', link: '', time, content: rawContent, kind });
