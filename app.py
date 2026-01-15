@@ -1224,7 +1224,7 @@ def api_tv_login():
     remote_error_seen = False
     success = False
 
-    # expected_password=password để bypass check "mật khẩu TV" hệ thống,
+        # expected_password=password để bypass check "mật khẩu TV" hệ thống,
     # vì ở luồng user TV password chính là số điện thoại khách.
     retryable_reasons = {
         "login_skip",
@@ -1264,7 +1264,9 @@ def api_tv_login():
         final_raw = result
         final_email = chosen_email
 
-        if not success and not invalid_code and not remote_required and "mật khẩu" not in message.lower():
+        # Nếu fail kiểu "mail không log được TV" (không phải mã sai / không phải remote / không phải sai mật khẩu)
+        # thì flag để lần sau tránh email này.
+        if (not success) and (not invalid_code) and (not remote_required) and ("mật khẩu" not in message.lower()):
             _flag_tv_login_failure(chosen_email)
 
         _log_activity(
@@ -1276,32 +1278,43 @@ def api_tv_login():
             message=f"[Lần {idx}] {attempt_message}",
         )
 
+        # 1) Remote required -> skip email này, thử email tiếp theo
         if remote_required:
             remote_error_seen = True
             final_message = attempt_message
             continue
-        elif success:
+
+        # 2) Success -> done
+        if success:
             status_code = 200
             final_message = f"Đăng nhập thành công bằng email {chosen_email}."
             if record:
                 _mark_tv_login_email_used(record)
             break
-        elif "mật khẩu" in message.lower():
+
+        # 3) Sai mật khẩu -> stop ngay
+        if "mật khẩu" in message.lower():
             status_code = 403
             final_message = message
             break
-        elif invalid_code:
+
+        # 4) Mã TV sai -> stop ngay (khỏi thử mail khác)
+        if invalid_code:
             status_code = 400
             final_message = "Mã bạn nhập sai vui lòng nhập lại"
             break
-        elif reason in retryable_reasons:
+
+        # 5) Lỗi có thể retry -> thử email tiếp theo
+        if reason in retryable_reasons:
             status_code = 400
             final_message = message
             continue
-        else:
-            status_code = 400
-            final_message = message
-            break
+
+        # 6) Các lỗi khác -> thử email tiếp theo (đừng break để tăng cơ hội pass)
+        status_code = 400
+        final_message = message
+        continue
+
 
     if status_code != 200:
         if not ("mật khẩu" in final_message.lower() or _is_invalid_tv_code_message(final_message) or remote_error_seen):
