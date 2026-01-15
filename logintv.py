@@ -78,18 +78,19 @@ def get_and_paste_code(driver, wait, netflix_handle, tukitech_handle):
         final_code_field.clear()
         final_code_field.send_keys(code_text)
 
-        # Submit login
-        BTN_LOGIN_FINAL_XPATH = "//button[normalize-space()='Đăng nhập' or @type='submit']"
-        login_btn = wait.until(EC.element_to_be_clickable((By.XPATH, BTN_LOGIN_FINAL_XPATH)))
-        safe_click(driver, login_btn)
+        # Netflix sẽ tự xác nhận sau khi dán mã, không cần bấm nút.
+        try:
+            WebDriverWait(driver, 20).until(
+                lambda d: any(
+                    keyword in (d.current_url or "").lower()
+                    for keyword in ("browse", "profiles")
+                )
+            )
+        except TimeoutException:
+            return False
 
-        time.sleep(4)
-
-        # Kiểm tra nếu vào được Web thành công
         cur = (driver.current_url or "").lower()
-        if ("browse" in cur) or ("profiles" in cur):
-            return True
-        return False
+        return ("browse" in cur) or ("profiles" in cur)
 
     except Exception:
         return False
