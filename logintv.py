@@ -235,7 +235,7 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
         wait_short.until(EC.presence_of_element_located((By.CSS_SELECTOR, otp_selector)))
         return True, None, None
     except TimeoutException:
-        pass
+        return False, "Không thấy ô nhập mã sau khi bấm Tiếp tục, đổi tài khoản khác.", "login_code_unavailable"
 
     if driver.find_elements(By.NAME, "password"):
         return False, "Tài khoản yêu cầu mật khẩu, không dùng được mã đăng nhập.", "login_code_unavailable"
