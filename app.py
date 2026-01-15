@@ -31,7 +31,8 @@ TV_LOGIN_FAILURE_MARKER = "[TV-LOGIN-FAILED]"
 TV_LOGIN_FAILURE_NOTE = "Không đăng nhập được TV."
 TV_SEED_DISABLED_KEY = "tv_login_seed_disabled"
 TV_PASSWORD_KEY = "tv_password"
-
+TV_NETFLIX_FAILURE_MARKER = "[NF-LOGIN-FAILED]"
+TV_NETFLIX_FAILURE_NOTE = "Không đăng nhập được Netflix."
 
 
 def _customer_table_name():
@@ -313,6 +314,19 @@ def _is_tv_login_failed_record(record: TvLoginEmail | None) -> bool:
     notes = (record.notes or "").lower()
     return TV_LOGIN_FAILURE_MARKER.lower() in notes
 
+def _is_netflix_login_failed(customer: Customer | None) -> bool:
+    if not customer:
+        return False
+    notes = (customer.notes or "").lower()
+    return TV_NETFLIX_FAILURE_MARKER.lower() in notes
+
+
+def _is_netflix_login_failed_record(record: TvLoginEmail | None) -> bool:
+    if not record:
+        return False
+    notes = (record.notes or "").lower()
+    return TV_NETFLIX_FAILURE_MARKER.lower() in notes
+
 
 def _append_marker_note(existing_notes: str | None, *, marker: str, note: str = "") -> str:
     base = existing_notes or ""
@@ -328,7 +342,11 @@ def _strip_tv_markers(notes: str | None) -> str:
     if not notes:
         return ""
 
-    markers = [TV_REMOTE_NOTE_MARKER.lower(), TV_LOGIN_FAILURE_MARKER.lower()]
+    markers = [
+        TV_REMOTE_NOTE_MARKER.lower(),
+        TV_LOGIN_FAILURE_MARKER.lower(),
+        TV_NETFLIX_FAILURE_MARKER.lower(),
+    ]
     filtered_parts = []
     for raw_part in notes.split("|"):
         part = raw_part.strip()
@@ -602,7 +620,13 @@ def _pick_next_tv_login_email(explicit_email: str | None = None):
     customer_map = _find_customers_by_emails([row.email for row in candidate])
     for row in candidate:
         customer = customer_map.get(_normalize_email(row.email))
-        if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer) or _is_tv_login_failed_record(row):
+        if (
+            _is_tv_remote_flagged(customer)
+            or _is_tv_login_failed(customer)
+            or _is_tv_login_failed_record(row)
+            or _is_netflix_login_failed(customer)
+            or _is_netflix_login_failed_record(row)
+        ):
             continue
         row.last_used_at = datetime.now(timezone.utc)
         db.session.commit()
@@ -699,7 +723,13 @@ def _get_tv_login_records(limit: int | None = None, *, exclude_flagged: bool = F
         filtered = []
         for row in records:
             customer = customer_map.get(_normalize_email(row.email))
-            if _is_tv_remote_flagged(customer) or _is_tv_login_failed(customer) or _is_tv_login_failed_record(row):
+            if (
+                _is_tv_remote_flagged(customer)
+                or _is_tv_login_failed(customer)
+                or _is_tv_login_failed_record(row)
+                or _is_netflix_login_failed(customer)
+                or _is_netflix_login_failed_record(row)
+            ):
                 continue
             filtered.append(row)
         return filtered
@@ -870,6 +900,28 @@ def _login_tv(password: str, code: str, email: str | None = None, expected_passw
         result = run_login_tv(password=password, code=code, email=chosen_email, expected_password=expected_password)
         normalized = _normalize_result(result, chosen_email)
         last_normalized = normalized
+
+        # ✅ MUST: reason luôn có giá trị trước khi dùng
+        reason = None
+        if isinstance(result, dict):
+            reason = result.get("reason")
+
+        # --- NEW: nếu fail do Netflix login thì flag để lần sau không pick lại ---
+        netflix_bad_reasons = {
+            "login_skip",
+            "account_not_found",
+            "login_flow_error",
+            "web_login_failed",
+        }
+        if (not normalized.get("success")) and (reason in netflix_bad_reasons):
+            _flag_tv_login_issue(
+                chosen_email,
+                marker=TV_NETFLIX_FAILURE_MARKER,
+                note=TV_NETFLIX_FAILURE_NOTE,
+                disable_tv_allowed=True,
+                remove_from_rotation=True,
+            )
+
 
         if normalized.get("success"):
             return normalized
