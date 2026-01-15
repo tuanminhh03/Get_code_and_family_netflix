@@ -237,10 +237,17 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     email_input.send_keys(email)
 
     # Bấm Tiếp tục
-    continue_btn = wait.until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-uia='continue-button']"))
-    )
+    continue_selector = "button[data-uia='continue-button']"
+    continue_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, continue_selector)))
     safe_click(driver, continue_btn)
+
+    for _ in range(2):
+        time.sleep(0.5)
+        remaining = driver.find_elements(By.CSS_SELECTOR, continue_selector)
+        if not remaining:
+            break
+        if remaining[0].is_enabled():
+            safe_click(driver, remaining[0])
 
     use_code_xpath = "//button[normalize-space()='Sử dụng mã đăng nhập' or normalize-space()='Use a sign-in code']"
     send_code_xpath = "//button[normalize-space()='Gửi mã đăng nhập' or normalize-space()='Send sign-in code']"
