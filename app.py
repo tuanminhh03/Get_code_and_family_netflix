@@ -1306,6 +1306,16 @@ def api_tv_login():
             message=f"[Lần {idx}] {attempt_message}",
         )
 
+        if (
+            record
+            and (not success)
+            and reason in retryable_reasons
+            and (not remote_required)
+            and (not invalid_code)
+            and ("mật khẩu" not in message.lower())
+        ):
+            _mark_tv_login_email_used(record)
+
         # 1) Remote required -> skip email này, thử email tiếp theo
         if remote_required:
             remote_error_seen = True
