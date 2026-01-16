@@ -553,8 +553,40 @@ def _get_tv_candidates(limit: int = 3, today: date | None = None):
 
 
 def _seed_tv_login_emails():
-    """Không seed từ account.txt để tránh dùng email ngoài danh sách TV."""
-    return
+    """Seed danh sách tv_login_email nếu đang trống và chưa bị tắt seed."""
+    ensure_database()
+
+    if (_get_app_setting(TV_SEED_DISABLED_KEY) or "").strip():
+        return
+
+    try:
+        has_rows = db.session.query(TvLoginEmail.id).limit(1).first()
+    except Exception:
+        return
+
+    if has_rows:
+        return
+
+    email_pattern = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    candidates = _get_seed_fallback_emails(limit=50)
+    if not candidates:
+        return
+
+    added = 0
+    for email in candidates:
+        if not email_pattern.match(email):
+            continue
+        exists = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == email).first()
+        if exists:
+            continue
+        db.session.add(TvLoginEmail(email=email))
+        added += 1
+
+    if added:
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
 
 def _pick_next_tv_login_email(explicit_email: str | None = None):
