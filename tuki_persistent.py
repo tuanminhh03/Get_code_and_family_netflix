@@ -88,7 +88,8 @@ class TukiPersistent:
     # ---------- driver ----------
     def _start_driver(self):
         opts = Options()
-        if self.headless:
+        debugger_enabled = config.apply_chrome_profile(opts)
+        if self.headless and not debugger_enabled:
             opts.add_argument("--headless=new")
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-gpu")
@@ -105,8 +106,6 @@ class TukiPersistent:
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
         )
         opts.page_load_strategy = "eager"
-        config.apply_chrome_profile(opts)
-
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=opts)
         config.apply_stealth_settings(self.driver)
