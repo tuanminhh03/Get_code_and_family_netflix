@@ -109,6 +109,7 @@ class TukiPersistent:
 
         service = Service(ChromeDriverManager().install())
         self.driver = webdriver.Chrome(service=service, options=opts)
+        config.apply_stealth_settings(self.driver)
         self.driver.set_page_load_timeout(60)
         self.driver.implicitly_wait(2)
 

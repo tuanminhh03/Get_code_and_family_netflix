@@ -344,6 +344,7 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
 
     selected_ctv = random.choice(CTV_CODES)
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    config.apply_stealth_settings(driver)
     wait = WebDriverWait(driver, 15)
 
     try:
