@@ -23,7 +23,7 @@ def _as_bool(value: str | None, default: bool = True) -> bool:
 
 # Bật headless mặc định để tránh lỗi khi môi trường không có UI/Chrome.
 # Nếu muốn xem trình duyệt, đặt TUKI_HEADLESS=0 hoặc "false".
-TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=False)
+TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=True)
 
 # Dùng Chrome profile hiện tại hoặc gắn vào Chrome đang mở.
 # - TUKI_CHROME_USER_DATA_DIR: đường dẫn đến user data dir của Chrome.
