@@ -24,3 +24,44 @@ def _as_bool(value: str | None, default: bool = True) -> bool:
 # Bật headless mặc định để tránh lỗi khi môi trường không có UI/Chrome.
 # Nếu muốn xem trình duyệt, đặt TUKI_HEADLESS=0 hoặc "false".
 TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=True)
+
+# Dùng Chrome profile hiện tại hoặc gắn vào Chrome đang mở.
+# - TUKI_CHROME_USER_DATA_DIR: đường dẫn đến user data dir của Chrome.
+# - TUKI_CHROME_PROFILE_DIR: tên profile (vd: "Default", "Profile 1").
+# - TUKI_CHROME_DEBUGGER_ADDRESS: địa chỉ debugger, vd "127.0.0.1:9222".
+TUKI_CHROME_USER_DATA_DIR = os.getenv("TUKI_CHROME_USER_DATA_DIR", "")
+TUKI_CHROME_PROFILE_DIR = os.getenv("TUKI_CHROME_PROFILE_DIR", "")
+TUKI_CHROME_DEBUGGER_ADDRESS = os.getenv("TUKI_CHROME_DEBUGGER_ADDRESS", "")
+
+
+def apply_chrome_profile(options) -> None:
+    """Áp cấu hình profile/debugger vào ChromeOptions."""
+    debugger_address = (TUKI_CHROME_DEBUGGER_ADDRESS or "").strip()
+    if debugger_address:
+        options.add_experimental_option("debuggerAddress", debugger_address)
+        return
+    user_data_dir = (TUKI_CHROME_USER_DATA_DIR or "").strip()
+    profile_dir = (TUKI_CHROME_PROFILE_DIR or "").strip()
+    if user_data_dir:
+        options.add_argument(f"--user-data-dir={user_data_dir}")
+    if profile_dir:
+        options.add_argument(f"--profile-directory={profile_dir}")
+
+
+def apply_stealth_settings(driver) -> None:
+    """Giảm dấu hiệu automation cho Chrome sau khi tạo driver."""
+    try:
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": (
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+                    "window.chrome = window.chrome || { runtime: {} };"
+                    "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});"
+                    "Object.defineProperty(navigator, 'languages', {get: () => ['vi-VN', 'vi', 'en-US']});"
+                )
+            },
+        )
+    except Exception:
+        # Không chặn luồng chính nếu CDP không khả dụng.
+        pass

@@ -325,6 +325,8 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
 
     chrome_options = Options()
     chrome_options.add_experimental_option("detach", True)
+    if getattr(config, "TUKI_HEADLESS", False):
+        chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -338,9 +340,11 @@ def _login_once(email: str, tv_code: str, progress: list[str] | None = None):
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     )
+    config.apply_chrome_profile(chrome_options)
 
     selected_ctv = random.choice(CTV_CODES)
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    config.apply_stealth_settings(driver)
     wait = WebDriverWait(driver, 15)
 
     try:
