@@ -6,6 +6,21 @@ sudo apt update
 sudo apt install -y python3 python3-venv python3-pip
 ```
 
+### (Khuyến nghị) Cài đặt deps cho Playwright/Selenium
+Ứng dụng có sử dụng Playwright/Selenium để tự động trình duyệt, vì vậy bạn cần cài browser.
+Bạn có 2 lựa chọn:
+
+**Cách A: Cài browser qua Playwright (đề xuất)**
+```bash
+# chạy trong virtualenv
+python -m playwright install --with-deps
+```
+
+**Cách B: Dùng Chromium hệ thống**
+```bash
+sudo apt install -y chromium-browser
+```
+
 ## 2) Clone mã nguồn và tạo môi trường ảo
 ```bash
 git clone <your-repo-url> app
@@ -17,14 +32,17 @@ pip install -r requirements.txt
 ```
 
 ## 3) Cấu hình biến môi trường
-Tạo file `.env` tại thư mục project:
+Tạo file `.env` tại thư mục project (có thể copy từ `.env.example`):
 ```bash
-SECRET_KEY=change-me
-ADMIN_PASSWORD=adminpass
-DATABASE_URL=sqlite:///data.db
-TUKI_HEADLESS=1
-GUNICORN_BIND=0.0.0.0:5000
+cp .env.example .env
 ```
+
+Chỉnh lại các giá trị quan trọng:
+- `SECRET_KEY`: khóa bí mật cho Flask.
+- `ADMIN_PASSWORD`: mật khẩu admin.
+- `DATABASE_URL`: mặc định dùng SQLite.
+- `TUKI_HEADLESS`: để `1` trên server.
+- Các biến `TUKI_CHROME_*`: chỉ cần nếu bạn muốn dùng Chrome profile/debugger.
 
 ## 4) Chạy bằng Gunicorn (khuyến nghị)
 ```bash
@@ -56,4 +74,30 @@ sudo systemctl status netflix-app
 ```
 
 ## 6) (Tùy chọn) Reverse proxy với Nginx
-Cấu hình Nginx để trỏ về `http://127.0.0.1:5000` và mở firewall tương ứng.
+Tạo file `/etc/nginx/sites-available/netflix-app`:
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+Kích hoạt site và reload:
+```bash
+sudo ln -s /etc/nginx/sites-available/netflix-app /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Nếu dùng UFW:
+```bash
+sudo ufw allow 80
+sudo ufw allow 443
+```
