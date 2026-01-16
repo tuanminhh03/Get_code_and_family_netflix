@@ -198,13 +198,22 @@ def _extract_netflix_message(driver):
     selectors = [
         "div.nf-message-contents[data-uia='UIMessage-content']",
         "div[data-uia='UIMessage-content']",
+        "p[data-uia='UIMessage-content']",
+        "span[data-uia='UIMessage-content']",
+        "div[data-uia*='UIMessage']",
+        "p[data-uia*='UIMessage']",
+        "span[data-uia*='UIMessage']",
         "div.textWithTags",
         "div.ui-message-contents",
+        "p.ui-message-contents",
+        "span.ui-message-contents",
         "div.ui-message-container",
         "div[role='alert']",
         "div.alert",
         "div.alert-error",
         "div[data-uia='error-message']",
+        "p[data-uia='error-message']",
+        "span[data-uia='error-message']",
     ]
     for selector in selectors:
         elements = driver.find_elements(By.CSS_SELECTOR, selector)
@@ -241,13 +250,16 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
     # Các lỗi dạng "tạm thời" -> bỏ qua account / thử account khác
     skip_texts = {
         "đã xảy ra lỗi. vui lòng thử lại trong vài phút.",
+        "đã xảy ra lỗi vui lòng thử lại trong vài phút",
     }
 
     def is_skip_text(text: str) -> bool:
         lowered_text = (text or "").strip().lower()
         if not lowered_text:
             return False
-        return any(skip_text in lowered_text for skip_text in skip_texts)
+        if any(skip_text in lowered_text for skip_text in skip_texts):
+            return True
+        return "đã xảy ra lỗi" in lowered_text and "vui lòng thử lại" in lowered_text
 
     def check_skip_message() -> str | None:
         message_text = _extract_netflix_message(driver)
@@ -288,6 +300,19 @@ def _netflix_request_login_code_new_flow(driver, wait, email: str):
                 return False, msg, "account_not_found"
 
         time.sleep(0.15)
+
+    # --- Kiểm tra thêm lỗi hiển thị muộn trong 6 giây ---
+    slow_deadline = time.time() + 6
+    while time.time() < slow_deadline:
+        msg = _extract_netflix_message(driver)
+        if msg:
+            if is_skip_text(msg):
+                return False, msg, "login_skip"
+            lowered = msg.lower()
+            if "không tìm thấy" in lowered or "can't find" in lowered:
+                return False, msg, "account_not_found"
+            return False, msg, "login_skip"
+        time.sleep(0.25)
 
     # --- Nếu qua 8s vẫn không có OTP/password/message rõ ràng => SKIP SỚM ---
     # (Bạn có thể nâng 8s lên 10-12s nếu mạng chậm)
