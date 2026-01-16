@@ -553,36 +553,8 @@ def _get_tv_candidates(limit: int = 3, today: date | None = None):
 
 
 def _seed_tv_login_emails():
-    """Đưa danh sách email trong account.txt vào bảng quay vòng nếu bảng đang trống."""
-    if _get_app_setting(TV_SEED_DISABLED_KEY):
-        return
-    try:
-        existing = TvLoginEmail.query.count()
-    except Exception:
-        return
-
-    if existing:
-        return
-
-    seed_emails = _load_seed_emails()
-    if not seed_emails:
-        return
-
-    added = 0
-    for raw in seed_emails:
-        email = _normalize_email(raw)
-        if not email:
-            continue
-        duplicate = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == email).first()
-        if duplicate:
-            continue
-        db.session.add(TvLoginEmail(email=email))
-        added += 1
-
-    if added:
-        db.session.commit()
-    else:
-        db.session.rollback()
+    """Không seed từ account.txt để tránh dùng email ngoài danh sách TV."""
+    return
 
 
 def _pick_next_tv_login_email(explicit_email: str | None = None):
@@ -1154,13 +1126,8 @@ def api_login_tv():
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
     login_records = _get_tv_login_records(exclude_flagged=True)
-    use_fallback_emails = False
     if not login_records:
-        fallback_emails = _get_seed_fallback_emails(limit=5)
-        if not fallback_emails:
-            return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
-        login_records = fallback_emails
-        use_fallback_emails = True
+        return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
 
     attempts = []
     final_success = False
@@ -1171,7 +1138,7 @@ def api_login_tv():
     invalid_code_seen = False
 
     for record in login_records:
-        email = record if use_fallback_emails else record.email
+        email = record.email
         result = _login_tv(password=password, code=code, email=email)
         final_raw = result
         if isinstance(result, dict):
@@ -1204,8 +1171,7 @@ def api_login_tv():
             final_email = email
             final_message = f"Đăng nhập thành công bằng email {email}."
             status_code = 200
-            if not use_fallback_emails:
-                _mark_tv_login_email_used(record)
+            _mark_tv_login_email_used(record)
             break
 
         if password_error:
@@ -1221,8 +1187,7 @@ def api_login_tv():
             status_code = 400
             break
 
-        if not use_fallback_emails:
-            _mark_tv_login_email_used(record)
+        _mark_tv_login_email_used(record)
 
     if not final_email and attempts:
         final_email = attempts[-1]["email"]
@@ -1270,9 +1235,7 @@ def api_tv_login():
     if status == 'expired':
         return jsonify({"success": False, "message": "Gói đã hết hạn, vui lòng liên hệ admin để gia hạn."}), 403
 
-    # Chọn email để login TV:
-    # - ưu tiên danh sách quay vòng trong bảng tv_login_email
-    # - fallback: lấy từ account.txt
+    # Chọn email để login TV chỉ từ danh sách quay vòng trong bảng tv_login_email.
     candidate_entries = []
     seen_emails = set()
 
@@ -1285,12 +1248,7 @@ def api_tv_login():
         seen_emails.add(normalized_email)
 
     if not candidate_entries:
-        fallback_emails = _get_seed_fallback_emails(limit=3, exclude=seen_emails)
-        for email in fallback_emails:
-            candidate_entries.append({"email": email, "record": None})
-            seen_emails.add(email)
-        if not candidate_entries:
-            return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
+        return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
 
     attempts = []
     final_email = candidate_entries[0]["email"]
