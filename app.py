@@ -1271,14 +1271,10 @@ def api_tv_login():
         return jsonify({"success": False, "message": "Gói đã hết hạn, vui lòng liên hệ admin để gia hạn."}), 403
 
     # Chọn email để login TV:
-    # - ưu tiên email của customer
-    # - sau đó fallback sang danh sách quay vòng
+    # - ưu tiên danh sách quay vòng trong bảng tv_login_email
+    # - fallback: lấy từ account.txt
     candidate_entries = []
     seen_emails = set()
-    customer_email = _normalize_email(customer.email or "")
-    if customer_email:
-        candidate_entries.append({"email": customer_email, "record": None})
-        seen_emails.add(customer_email)
 
     rotation_records = _get_tv_login_records(limit=3, exclude_flagged=True)
     for record in rotation_records:
