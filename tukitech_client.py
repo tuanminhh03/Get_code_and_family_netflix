@@ -8,8 +8,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 
-TUKI_URL = "https://tukitech.com/user_management/customer_login/"
-USERNAME_TUKI = "CTV0047"
+import config
+
+TUKI_URL = getattr(config, "TUKI_URL", "https://tukitech.com/user_management/customer_login/")
+USERNAME_TUKI = getattr(config, "USERNAME_TUKI", "CTV0047")
 
 class TukiPersistent:
     def __init__(self, headless=True):
@@ -28,6 +30,7 @@ class TukiPersistent:
         opts.add_argument("--disable-gpu")
         opts.add_argument("--no-sandbox")
         opts.add_argument("--window-size=1280,900")
+        config.apply_chrome_profile(opts)
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
         self.driver.set_page_load_timeout(90)
 
