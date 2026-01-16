@@ -26,14 +26,12 @@ class TukiPersistent:
 
     def _start_driver(self):
         opts = Options()
-        if self.headless:
+        debugger_enabled = config.apply_chrome_profile(opts)
+        if self.headless and not debugger_enabled:
             opts.add_argument("--headless=new")
         opts.add_argument("--disable-gpu")
         opts.add_argument("--no-sandbox")
         opts.add_argument("--window-size=1280,900")
-
-        # gắn profile/debugger nếu có cấu hình
-        config.apply_chrome_profile(opts)
 
         self.driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()),

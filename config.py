@@ -34,12 +34,20 @@ TUKI_CHROME_PROFILE_DIR = os.getenv("TUKI_CHROME_PROFILE_DIR", "")
 TUKI_CHROME_DEBUGGER_ADDRESS = os.getenv("TUKI_CHROME_DEBUGGER_ADDRESS", "")
 
 
-def apply_chrome_profile(options) -> None:
+def chrome_debugger_address() -> str:
+    return (TUKI_CHROME_DEBUGGER_ADDRESS or "").strip()
+
+
+def is_debugger_enabled() -> bool:
+    return bool(chrome_debugger_address())
+
+
+def apply_chrome_profile(options) -> bool:
     """Áp cấu hình profile/debugger vào ChromeOptions."""
-    debugger_address = (TUKI_CHROME_DEBUGGER_ADDRESS or "").strip()
+    debugger_address = chrome_debugger_address()
     if debugger_address:
         options.add_experimental_option("debuggerAddress", debugger_address)
-        return
+        return True
 
     user_data_dir = (TUKI_CHROME_USER_DATA_DIR or "").strip()
     profile_dir = (TUKI_CHROME_PROFILE_DIR or "").strip()
@@ -48,6 +56,7 @@ def apply_chrome_profile(options) -> None:
         options.add_argument(f"--user-data-dir={user_data_dir}")
     if profile_dir:
         options.add_argument(f"--profile-directory={profile_dir}")
+    return False
 
 
 def apply_stealth_settings(driver) -> None:
