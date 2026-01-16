@@ -354,10 +354,10 @@ def _login_once_pw(email: str, tv_code: str, progress: list[str] | None = None):
 
     selected_ctv = random.choice(CTV_CODES)
 
-    # Netflix thường ổn hơn khi headless=False
-    headless = bool(getattr(config, "TUKI_HEADLESS", False))
-    # Nếu bạn muốn ép luôn hiển thị:
-    headless = False
+    # Netflix thường ổn hơn khi headless=False, nhưng server không có X nên cần headless=True.
+    headless = bool(getattr(config, "TUKI_HEADLESS", True))
+    if not os.getenv("DISPLAY"):
+        headless = True
 
     try:
         with sync_playwright() as p:
