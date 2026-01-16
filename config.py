@@ -40,8 +40,10 @@ def apply_chrome_profile(options) -> None:
     if debugger_address:
         options.add_experimental_option("debuggerAddress", debugger_address)
         return
+
     user_data_dir = (TUKI_CHROME_USER_DATA_DIR or "").strip()
     profile_dir = (TUKI_CHROME_PROFILE_DIR or "").strip()
+
     if user_data_dir:
         options.add_argument(f"--user-data-dir={user_data_dir}")
     if profile_dir:
