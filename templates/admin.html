@@ -175,8 +175,12 @@
               <input type="hidden" name="next" value="{{ next_url }}">
               <label>Import danh sách Email | Cookies (.txt, .xlsx)
                 <input type="file" name="email_file" accept=".txt,.xlsx" required>
-                <small>.txt: Email | Cookies (phân tách bằng tab hoặc dấu |), UTF-8. .xlsx: cột Email + Cookies.</small>
+                <small>
+                  .txt: Email | Cookies (phân tách bằng tab hoặc dấu |), UTF-8.
+                  .xlsx: có cột Email và Cookies.
+                </small>
               </label>
+
               <div class="actions">
                 <button type="submit" class="btn-secondary">Import email</button>
               </div>
