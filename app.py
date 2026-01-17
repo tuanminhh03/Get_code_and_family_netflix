@@ -35,6 +35,15 @@ TV_NETFLIX_FAILURE_MARKER = "[NF-LOGIN-FAILED]"
 TV_NETFLIX_FAILURE_NOTE = "Không đăng nhập được Netflix."
 
 
+def _terminal_report(title: str, *, level: str = "INFO", details: dict | None = None):
+    timestamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    header = f"[REPORT][{level}] {timestamp} - {title}"
+    print(header, flush=True)
+    if details:
+        for key, value in details.items():
+            print(f"  - {key}: {value}", flush=True)
+
+
 def _customer_table_name():
     try:
         inspector = inspect(db.engine)
@@ -1155,11 +1164,26 @@ def api_login_tv():
     code = (payload.get('code') or '').strip()
 
     if not re.fullmatch(r"\d{8}", code or ""):
+        _terminal_report(
+            "TV login (admin) - invalid TV code",
+            level="WARN",
+            details={"code": code, "password_provided": bool(password)},
+        )
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
     login_records = _get_tv_login_records(exclude_flagged=True)
     if not login_records:
+        _terminal_report(
+            "TV login (admin) - no available emails",
+            level="WARN",
+            details={"code": code},
+        )
         return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
+
+    _terminal_report(
+        "TV login (admin) - start",
+        details={"code": code, "candidate_emails": len(login_records)},
+    )
 
     attempts = []
     final_success = False
@@ -1185,6 +1209,17 @@ def api_login_tv():
         password_error = "mật khẩu" in message.lower()
         invalid_code = _is_invalid_tv_code_message(message)
         remote_required = bool(result.get("remote_login_required")) or _is_tv_remote_login_message(message)
+
+        _terminal_report(
+            "TV login (admin) - attempt",
+            details={
+                "email": email,
+                "success": success,
+                "message": message,
+                "remote_required": remote_required,
+                "invalid_code": invalid_code,
+            },
+        )
 
         if remote_required:
             final_message = "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này."
@@ -1227,6 +1262,15 @@ def api_login_tv():
     if not final_success and status_code == 400 and not invalid_code_seen:
         final_message = final_message or "Không thể đăng nhập TV với các email hiện tại."
 
+    _terminal_report(
+        "TV login (admin) - summary",
+        details={
+            "status_code": status_code,
+            "success": final_success,
+            "final_email": final_email,
+            "message": final_message,
+        },
+    )
 
     response_payload = {
         "success": final_success,
@@ -1251,20 +1295,45 @@ def api_tv_login():
     code = (payload.get('code') or '').strip()
 
     if not password:
+        _terminal_report(
+            "TV login (user) - missing password",
+            level="WARN",
+            details={"code": code},
+        )
         return jsonify({"success": False, "message": "Vui lòng nhập mật khẩu đăng nhập TV."}), 400
     if not re.fullmatch(r"\d{8}", code):
+        _terminal_report(
+            "TV login (user) - invalid TV code",
+            level="WARN",
+            details={"code": code},
+        )
         return jsonify({"success": False, "message": "Mã TV phải đủ 8 số."}), 400
 
     # password ở trang /tv là số điện thoại khách hàng
     customer = _find_tv_customer_by_password(password)
     if not customer:
+        _terminal_report(
+            "TV login (user) - phone not found",
+            level="WARN",
+            details={"code": code, "password_provided": bool(password)},
+        )
         return jsonify({"success": False, "message": "Mật khẩu không nằm trong danh sách khách hàng."}), 403
 
     if not customer.tv_allowed:
+        _terminal_report(
+            "TV login (user) - tv not allowed",
+            level="WARN",
+            details={"customer_id": customer.id, "phone": customer.phone},
+        )
         return jsonify({"success": False, "message": "Tài khoản chưa được cấp quyền đăng nhập TV."}), 403
 
     status = _evaluate_status(customer.expiry_date)
     if status == 'expired':
+        _terminal_report(
+            "TV login (user) - expired subscription",
+            level="WARN",
+            details={"customer_id": customer.id, "expiry_date": customer.expiry_display},
+        )
         return jsonify({"success": False, "message": "Gói đã hết hạn, vui lòng liên hệ admin để gia hạn."}), 403
 
     # Chọn email để login TV chỉ từ danh sách quay vòng trong bảng tv_login_email.
@@ -1280,6 +1349,11 @@ def api_tv_login():
         seen_emails.add(normalized_email)
 
     if not candidate_entries:
+        _terminal_report(
+            "TV login (user) - no candidate emails",
+            level="WARN",
+            details={"customer_id": customer.id},
+        )
         return jsonify({"success": False, "message": "Chưa có email nào trong danh sách đăng nhập TV."}), 503
 
     attempts = []
@@ -1300,6 +1374,16 @@ def api_tv_login():
         "tv_login_error",
         "login_flow_error",
     }
+
+    _terminal_report(
+        "TV login (user) - start",
+        details={
+            "customer_id": customer.id,
+            "phone": customer.phone,
+            "candidate_emails": len(candidate_entries),
+            "code": code,
+        },
+    )
 
     for idx, entry in enumerate(candidate_entries, start=1):
         chosen_email = entry["email"]
@@ -1324,6 +1408,19 @@ def api_tv_login():
         attempt_message = (
             "Email yêu cầu đăng nhập bằng điều khiển TV, đã ghi chú và bỏ qua email này."
             if remote_required else message
+        )
+
+        _terminal_report(
+            "TV login (user) - attempt",
+            details={
+                "index": idx,
+                "email": chosen_email,
+                "success": success,
+                "message": attempt_message,
+                "reason": reason,
+                "remote_required": remote_required,
+                "invalid_code": invalid_code,
+            },
         )
 
         attempts.append({"email": chosen_email, "success": success, "message": attempt_message, "steps": steps})
@@ -1398,6 +1495,16 @@ def api_tv_login():
                 f"{item['email']} -> {item['message']}" for item in attempts
             )
             final_message = f"Không thể đăng nhập TV. Đã thử: {attempts_summary}"
+
+    _terminal_report(
+        "TV login (user) - summary",
+        details={
+            "status_code": status_code,
+            "success": status_code == 200,
+            "final_email": final_email,
+            "message": final_message,
+        },
+    )
 
     return (
         jsonify(
@@ -1849,8 +1956,18 @@ def api_fetch():
         fetch_email = (target_email_raw or email_raw or '').strip()
 
         if not email:
+            _terminal_report(
+                "Fetch - missing email",
+                level="WARN",
+                details={"kind": kind, "password_provided": bool(phone_raw)},
+            )
             return jsonify({"success": False, "message": "Thiếu email"}), 400
         if kind not in ("login_code", "verify_link"):
+            _terminal_report(
+                "Fetch - invalid kind",
+                level="WARN",
+                details={"kind": kind},
+            )
             return jsonify({"success": False, "message": f"kind không hợp lệ: {kind}"}), 400
 
         PHONE_NOT_ALLOWED_MSG = (
@@ -1858,6 +1975,11 @@ def api_fetch():
         )
 
         if not phone:
+            _terminal_report(
+                "Fetch - missing phone",
+                level="WARN",
+                details={"email": email, "target_email": target_email},
+            )
             return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
 
         ensure_database()
@@ -1865,39 +1987,74 @@ def api_fetch():
         phone_holder = Customer.query.filter(func.lower(Customer.phone) == phone.lower()).first()
         if not phone_holder:
             log_attempt(customer_id=None, success=False, message="Số điện thoại không hợp lệ")
+            _terminal_report(
+                "Fetch - phone not found",
+                level="WARN",
+                details={"phone": phone, "email": email},
+            )
             return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
 
         phone_status = _evaluate_status(phone_holder.expiry_date)
         if phone_status == 'expired':
             log_attempt(customer_id=phone_holder.id, success=False, message="Số điện thoại hết hạn")
+            _terminal_report(
+                "Fetch - phone expired",
+                level="WARN",
+                details={"phone": phone_holder.phone, "expiry_date": phone_holder.expiry_display},
+            )
             return jsonify({"success": False, "message": PHONE_NOT_ALLOWED_MSG}), 403
 
         # Validate requester
         requester = Customer.query.filter(func.lower(Customer.email) == email).first()
         if not requester:
             log_attempt(customer_id=phone_holder.id, success=False, message="Email requester không hợp lệ")
+            _terminal_report(
+                "Fetch - requester invalid",
+                level="WARN",
+                details={"requester_email": email},
+            )
             return jsonify({"success": False, "message": "Email không hợp lệ hoặc chưa được cấp quyền, vui lòng liên hệ admin."}), 403
 
         status = _evaluate_status(requester.expiry_date)
         if status == 'expired':
             log_attempt(customer_id=phone_holder.id, success=False, message="Gói requester hết hạn")
+            _terminal_report(
+                "Fetch - requester expired",
+                level="WARN",
+                details={"requester_email": requester.email, "expiry_date": requester.expiry_display},
+            )
             return jsonify({"success": False, "message": "Gói Netflix của bạn đã hết hạn, vui lòng liên hệ admin để được gia hạn."}), 403
 
         # Validate target (can be the same as requester)
         target = Customer.query.filter(func.lower(Customer.email) == target_email).first()
         if not target:
             log_attempt(customer_id=phone_holder.id, success=False, message="Email đích không tồn tại")
+            _terminal_report(
+                "Fetch - target not found",
+                level="WARN",
+                details={"target_email": target_email},
+            )
             return jsonify({"success": False, "message": "Email đích không tồn tại trong hệ thống."}), 404
 
         target_status = _evaluate_status(target.expiry_date)
         if target_status == 'expired':
             log_attempt(customer_id=phone_holder.id, success=False, message="Email đích hết hạn")
+            _terminal_report(
+                "Fetch - target expired",
+                level="WARN",
+                details={"target_email": target.email, "expiry_date": target.expiry_display},
+            )
             return jsonify({"success": False, "message": "Email đích đã hết hạn, vui lòng liên hệ admin."}), 403
 
         try:
             worker = ensure_worker()
         except Exception as exc:
             log_attempt(customer_id=phone_holder.id, success=False, message=f"Không khởi tạo được worker: {exc}")
+            _terminal_report(
+                "Fetch - worker init failed",
+                level="ERROR",
+                details={"error": exc},
+            )
             return jsonify({"success": False, "message": "Hệ thống đang bận, vui lòng thử lại sau ít phút."}), 503
         print(f"[API] yêu cầu: kind={kind} email={fetch_email}")
         result = worker.fetch(email=fetch_email, kind=kind)
@@ -1918,6 +2075,11 @@ def api_fetch():
             if result.get("success") is False:
                 message = result.get("message") or "Phản hồi không thành công từ worker"
                 log_attempt(customer_id=phone_holder.id, success=False, message=message)
+                _terminal_report(
+                    "Fetch - worker reported failure",
+                    level="WARN",
+                    details={"email": fetch_email, "message": message, "result": result},
+                )
                 return jsonify({"success": False, "message": message}), 502
 
             code = (result.get("code") or result.get("result") or "").strip()
@@ -1961,12 +2123,27 @@ def api_fetch():
         }
 
         log_attempt(customer_id=phone_holder.id, success=True, message="Thành công")
+        _terminal_report(
+            "Fetch - success",
+            details={
+                "requester": requester.email,
+                "target": target.email,
+                "kind": kind,
+                "code_present": bool(code),
+                "verify_link_present": bool(verify_link),
+            },
+        )
 
         return jsonify(response_payload)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
+        _terminal_report(
+            "Fetch - unhandled exception",
+            level="ERROR",
+            details={"error": e},
+        )
         return jsonify({"success": False, "message": f"Lỗi server: {e}"}), 500
 
 
