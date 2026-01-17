@@ -189,15 +189,28 @@ def _confirm_netflix_cookie_login(page):
         "div[data-uia='profile-gate-container']",
         "div.profile-gate-container",
         "header[data-uia='header']",
+        "div[data-uia='profiles-gate-container']",
+        "div[data-uia='main-view']",
+        "div[data-uia='browse-page']",
+        "main[role='main']",
     ]
+    selector_timeout = 8000
     for sel in success_selectors:
         try:
-            if page.locator(sel).first.is_visible(timeout=3000):
+            if page.locator(sel).first.is_visible(timeout=selector_timeout):
                 return True, None
         except Exception:
             pass
 
+    try:
+        if page.locator("form[action*='/login']").first.is_visible(timeout=1500):
+            return False, "Cookies không hợp lệ hoặc đã hết hạn (login form visible)."
+    except Exception:
+        pass
+
     msg = _extract_netflix_message_pw(page)
+    if msg is None and "/browse" in url:
+        return True, None
     return False, f"Không xác nhận được login bằng cookies. msg={msg!r} url={url}"
 
 
