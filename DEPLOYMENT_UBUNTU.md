@@ -42,7 +42,24 @@ Chỉnh lại các giá trị quan trọng:
 - `ADMIN_PASSWORD`: mật khẩu admin.
 - `DATABASE_URL`: mặc định dùng SQLite.
 - `TUKI_HEADLESS`: để `1` trên server.
+- `TUKI_FORCE_HEADFUL`: đặt `1` nếu muốn chạy headful trên VPS (cần DISPLAY).
 - Các biến `TUKI_CHROME_*`: chỉ cần nếu bạn muốn dùng Chrome profile/debugger.
+
+### Chạy headful trên VPS bằng Xvfb (khắc phục lỗi Netflix khi headless)
+> Lưu ý: Chỉ bật nếu bạn đã cài Xvfb và muốn chạy headful.
+
+```bash
+sudo apt install -y xvfb
+```
+
+Chạy app với DISPLAY ảo:
+```bash
+export DISPLAY=:99
+Xvfb :99 -screen 0 1920x1080x24 &
+export TUKI_FORCE_HEADFUL=1
+```
+
+Sau đó chạy app như bình thường (gunicorn hoặc python). Nếu muốn chạy nền, hãy đưa các lệnh export vào file `.env` hoặc systemd service.
 
 ## 4) Chạy bằng Gunicorn (khuyến nghị)
 ```bash
