@@ -298,7 +298,6 @@ def _is_tv_remote_login_message(message: str | None):
         "sign in with your remote",
         "try using your remote",
         "hãy thử đăng nhập bằng điều khiển tv",
-        "không thấy ô nhập mã",
     ]
     return any(key in lowered for key in keywords)
 
