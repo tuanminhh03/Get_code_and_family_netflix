@@ -162,6 +162,10 @@
               <label>Email đăng nhập TV
                 <input name="email" type="email" placeholder="email@domain.com" required>
               </label>
+              <label>Cookies đăng nhập TV
+                <textarea name="cookies" rows="4" placeholder="# Netscape HTTP Cookie File" required></textarea>
+                <small>Dán đầy đủ cookie theo chuẩn Netscape.</small>
+              </label>
               <div class="actions">
                 <button type="submit" class="btn-secondary">Thêm email</button>
               </div>
@@ -169,9 +173,9 @@
             <form method="post" action="{{ url_for('admin_tv_emails') }}" enctype="multipart/form-data" class="form-grid">
               <input type="hidden" name="action" value="import">
               <input type="hidden" name="next" value="{{ next_url }}">
-              <label>Import danh sách email (.txt)
-                <input type="file" name="email_file" accept=".txt" required>
-                <small>Mỗi dòng là một email, định dạng UTF-8</small>
+              <label>Import danh sách Email | Cookies (.txt, .xlsx)
+                <input type="file" name="email_file" accept=".txt,.xlsx" required>
+                <small>.txt: Email | Cookies (phân tách bằng tab hoặc dấu |), UTF-8. .xlsx: cột Email + Cookies.</small>
               </label>
               <div class="actions">
                 <button type="submit" class="btn-secondary">Import email</button>
@@ -244,6 +248,10 @@
                   </div>
 
                   <div class="tv-email-meta">
+                    <div class="tv-email-meta-item tv-email-meta-item-full">
+                      <span class="tv-email-meta-label">Cookies</span>
+                      <textarea class="tv-email-meta-value tv-email-cookies mono" rows="4" readonly>{{ item.cookies or "—" }}</textarea>
+                    </div>
                     <div class="tv-email-meta-item">
                       <span class="tv-email-meta-label">Ghi chú</span>
                       <span class="tv-email-meta-value">{{ item.status or "—" }}</span>
