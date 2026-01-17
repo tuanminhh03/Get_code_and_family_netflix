@@ -13,7 +13,9 @@ from sqlalchemy import func, inspect, or_, text, case
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
+from openpyxl import load_workbook
 import config
+import io
 import os
 import re
 from logintv import login_tv as run_login_tv
@@ -1830,11 +1832,59 @@ def admin_tv_emails():
             flash('Vui lòng chọn tệp .txt để import.', 'danger')
             return redirect(next_url)
 
-        try:
-            content = file.read().decode('utf-8')
-        except UnicodeDecodeError:
-            flash('Tệp phải sử dụng mã hóa UTF-8.', 'danger')
-            return redirect(next_url)
+        filename = file.filename or ""
+        is_xlsx = filename.lower().endswith(".xlsx")
+
+        rows: list[tuple[str, str]] = []
+        if is_xlsx:
+            try:
+                workbook = load_workbook(io.BytesIO(file.read()), read_only=True, data_only=True)
+            except Exception:
+                flash('Không thể đọc tệp .xlsx. Vui lòng kiểm tra lại định dạng.', 'danger')
+                return redirect(next_url)
+
+            sheet = workbook.active
+            header_map: dict[str, int] = {}
+            for row_index, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+                values = [str(cell or "").strip() for cell in row]
+                if not any(values):
+                    continue
+                if row_index == 1:
+                    lowered = [value.lower() for value in values]
+                    for idx, value in enumerate(lowered):
+                        if "email" == value or "email" in value:
+                            header_map["email"] = idx
+                        if "cookie" in value:
+                            header_map["cookies"] = idx
+                    if header_map:
+                        continue
+                if header_map:
+                    email_value = values[header_map.get("email", 0)] if values else ""
+                    cookies_value = values[header_map.get("cookies", 1)] if len(values) > 1 else ""
+                else:
+                    email_value = values[0] if values else ""
+                    cookies_value = values[1] if len(values) > 1 else ""
+                rows.append((email_value, cookies_value))
+        else:
+            try:
+                content = file.read().decode('utf-8')
+            except UnicodeDecodeError:
+                flash('Tệp phải sử dụng mã hóa UTF-8.', 'danger')
+                return redirect(next_url)
+
+            for line in content.splitlines():
+                if not line or not line.strip():
+                    continue
+                if line.strip().lower().startswith("email") and "cookie" in line.lower():
+                    continue
+
+                if "\t" in line:
+                    raw_email, raw_cookies = line.split("\t", 1)
+                elif "|" in line:
+                    raw_email, raw_cookies = line.split("|", 1)
+                else:
+                    raw_email, raw_cookies = line, ""
+                rows.append((raw_email, raw_cookies))
 
         email_pattern = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
         added = 0
@@ -1842,22 +1892,9 @@ def admin_tv_emails():
         skipped = 0
         invalid = 0
         seen = set()
-
-        for line in content.splitlines():
-            if not line or not line.strip():
-                continue
-            if line.strip().lower().startswith("email") and "cookie" in line.lower():
-                continue
-
-            if "\t" in line:
-                raw_email, raw_cookies = line.split("\t", 1)
-            elif "|" in line:
-                raw_email, raw_cookies = line.split("|", 1)
-            else:
-                raw_email, raw_cookies = line, ""
-
+        for raw_email, raw_cookies in rows:
             candidate = _normalize_email(raw_email)
-            cookies_value = (raw_cookies or "").strip().strip('"')
+            cookies_value = (str(raw_cookies or "")).strip().strip('"')
 
             if not candidate or candidate in seen:
                 if candidate:
