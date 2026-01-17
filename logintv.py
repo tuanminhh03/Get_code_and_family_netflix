@@ -92,8 +92,9 @@ def _parse_netscape_cookies(raw: str) -> list[dict]:
     cookies: list[dict] = []
     for line in (raw or "").splitlines():
         line = line.strip()
-        if not line or line.startswith("#") and not line.startswith("#HttpOnly_"):
+        if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
             continue
+
         http_only = False
         if line.startswith("#HttpOnly_"):
             http_only = True
@@ -102,35 +103,43 @@ def _parse_netscape_cookies(raw: str) -> list[dict]:
         parts = line.split("\t")
         if len(parts) < 7:
             continue
+
         domain, include_subdomains, path, secure, expires, name, value = parts[:7]
         cookie = {
             "domain": domain,
             "path": path,
-            "secure": secure.lower() == "true",
+            "secure": str(secure).lower() == "true",
             "name": name,
             "value": value,
         }
         if http_only:
             cookie["httpOnly"] = True
+
         try:
             exp_value = float(expires)
             if exp_value > 0:
                 cookie["expires"] = exp_value
         except Exception:
             pass
+
         cookies.append(cookie)
+
     return cookies
 
 
 def _load_netflix_cookies_from_text(raw: str) -> list[dict]:
     if not raw or not raw.strip():
         return []
+
     stripped = raw.strip()
+
+    # JSON cookies (list/dict)
     if stripped.startswith("{") or stripped.startswith("["):
         try:
             data = json.loads(stripped)
         except Exception:
             data = None
+
         if isinstance(data, (list, dict)):
             cookies = data.get("cookies") if isinstance(data, dict) else data
             if isinstance(cookies, list):
@@ -142,13 +151,14 @@ def _load_netflix_cookies_from_text(raw: str) -> list[dict]:
                     if normalized_cookie:
                         normalized.append(normalized_cookie)
                 return normalized
+
+    # Netscape cookies text
     normalized = []
     for item in _parse_netscape_cookies(stripped):
         normalized_cookie = _normalize_cookie(item)
         if normalized_cookie:
             normalized.append(normalized_cookie)
     return normalized
-
 
 def _load_netflix_cookies(path: str) -> list[dict]:
     if not path:
@@ -520,6 +530,7 @@ def _login_once_pw(
     if not cookies:
         cookies_path = _get_netflix_cookies_path()
         cookies = _load_netflix_cookies(cookies_path)
+
 
     # Netflix thường ổn hơn khi headless=False, nhưng server không có X nên cần headless=True.
     headless = bool(getattr(config, "TUKI_HEADLESS", True))
