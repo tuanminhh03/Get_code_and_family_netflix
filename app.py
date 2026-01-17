@@ -927,17 +927,29 @@ def _login_tv(password: str, code: str, email: str | None = None, expected_passw
 
     for _ in range(max_attempts):
         chosen_email = email
+        record = None
         if not chosen_email:
             record = _pick_next_tv_login_email()
             if not record:
                 break
             chosen_email = record.email
+        else:
+            normalized_email = _normalize_email(chosen_email)
+            if normalized_email:
+                record = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == normalized_email).first()
 
         if not chosen_email or chosen_email in attempted_emails:
             break
 
         attempted_emails.add(chosen_email)
-        result = run_login_tv(password=password, code=code, email=chosen_email, expected_password=expected_password)
+        cookies_text = record.cookies if record else None
+        result = run_login_tv(
+            password=password,
+            code=code,
+            email=chosen_email,
+            expected_password=expected_password,
+            cookies=cookies_text,
+        )
         normalized = _normalize_result(result, chosen_email)
         last_normalized = normalized
 

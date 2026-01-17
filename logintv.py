@@ -88,6 +88,78 @@ def _normalize_cookie(cookie: dict) -> dict | None:
     return normalized
 
 
+def _parse_netscape_cookies(raw: str) -> list[dict]:
+    cookies: list[dict] = []
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
+            continue
+
+        http_only = False
+        if line.startswith("#HttpOnly_"):
+            http_only = True
+            line = line.replace("#HttpOnly_", "", 1)
+
+        parts = line.split("\t")
+        if len(parts) < 7:
+            continue
+
+        domain, include_subdomains, path, secure, expires, name, value = parts[:7]
+        cookie = {
+            "domain": domain,
+            "path": path,
+            "secure": str(secure).lower() == "true",
+            "name": name,
+            "value": value,
+        }
+        if http_only:
+            cookie["httpOnly"] = True
+
+        try:
+            exp_value = float(expires)
+            if exp_value > 0:
+                cookie["expires"] = exp_value
+        except Exception:
+            pass
+
+        cookies.append(cookie)
+
+    return cookies
+
+
+def _load_netflix_cookies_from_text(raw: str) -> list[dict]:
+    if not raw or not raw.strip():
+        return []
+
+    stripped = raw.strip()
+
+    # JSON cookies (list/dict)
+    if stripped.startswith("{") or stripped.startswith("["):
+        try:
+            data = json.loads(stripped)
+        except Exception:
+            data = None
+
+        if isinstance(data, (list, dict)):
+            cookies = data.get("cookies") if isinstance(data, dict) else data
+            if isinstance(cookies, list):
+                normalized = []
+                for item in cookies:
+                    if not isinstance(item, dict):
+                        continue
+                    normalized_cookie = _normalize_cookie(item)
+                    if normalized_cookie:
+                        normalized.append(normalized_cookie)
+                return normalized
+
+    # Netscape cookies text
+    normalized = []
+    for item in _parse_netscape_cookies(stripped):
+        normalized_cookie = _normalize_cookie(item)
+        if normalized_cookie:
+            normalized.append(normalized_cookie)
+    return normalized
+
 def _load_netflix_cookies(path: str) -> list[dict]:
     if not path:
         return []
@@ -95,22 +167,10 @@ def _load_netflix_cookies(path: str) -> list[dict]:
         return []
     try:
         with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
+            data = handle.read()
     except Exception:
         return []
-
-    cookies = data.get("cookies") if isinstance(data, dict) else data
-    if not isinstance(cookies, list):
-        return []
-
-    normalized = []
-    for item in cookies:
-        if not isinstance(item, dict):
-            continue
-        normalized_cookie = _normalize_cookie(item)
-        if normalized_cookie:
-            normalized.append(normalized_cookie)
-    return normalized
+    return _load_netflix_cookies_from_text(data)
 
 
 def _confirm_netflix_cookie_login(page):
@@ -456,13 +516,21 @@ def enter_tv_code_pw(netflix_page, tv_code: str):
         print(f" -> Lỗi khi nhập mã TV: {e}")
         return False, "Không thể đăng nhập TV.", "tv_login_error"
 
-def _login_once_pw(email: str, tv_code: str, progress: list[str] | None = None):
+def _login_once_pw(
+    email: str,
+    tv_code: str,
+    progress: list[str] | None = None,
+    cookies_text: str | None = None,
+):
     def push_step(msg: str):
         if progress is not None:
             progress.append(msg)
 
-    cookies_path = _get_netflix_cookies_path()
-    cookies = _load_netflix_cookies(cookies_path)
+    cookies = _load_netflix_cookies_from_text(cookies_text or "")
+    if not cookies:
+        cookies_path = _get_netflix_cookies_path()
+        cookies = _load_netflix_cookies(cookies_path)
+
 
     # Netflix thường ổn hơn khi headless=False, nhưng server không có X nên cần headless=True.
     headless = bool(getattr(config, "TUKI_HEADLESS", True))
@@ -552,7 +620,13 @@ def worker_process(email):
     return _login_once_pw(email=email, tv_code=TV_CODE_TO_ENTER)
 
 
-def login_tv(password: str, code: str, email: str | None = None, expected_password: str | None = None):
+def login_tv(
+    password: str,
+    code: str,
+    email: str | None = None,
+    expected_password: str | None = None,
+    cookies: str | None = None,
+):
     expected_password = (expected_password if expected_password is not None else _get_tv_password()) or ""
     expected_password = expected_password.strip()
     if not expected_password:
@@ -574,7 +648,7 @@ def login_tv(password: str, code: str, email: str | None = None, expected_passwo
     last_result = None
     for target_email in emails:
         progress: list[str] = []
-        result = _login_once_pw(email=target_email, tv_code=code, progress=progress)
+        result = _login_once_pw(email=target_email, tv_code=code, progress=progress, cookies_text=cookies)
         if isinstance(result, dict):
             last_result = result
             if result.get("success"):
