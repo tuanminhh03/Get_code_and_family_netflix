@@ -67,30 +67,38 @@ gunicorn --config gunicorn_conf.py wsgi:application
 ```
 
 ## 5) (Tùy chọn) Tạo systemd service
-Tạo file `/etc/systemd/system/netflix-app.service`:
+Bạn có thể dùng mẫu có sẵn trong repo: `deploy/systemd/netflix-app.service`.
+
+Copy và chỉnh lại `User`, `Group`, `WorkingDirectory`, `EnvironmentFile`, `ExecStart` theo VPS của bạn:
 ```ini
 [Unit]
 Description=Netflix Flask App
 After=network.target
 
 [Service]
+Type=simple
 User=ubuntu
+Group=ubuntu
 WorkingDirectory=/home/ubuntu/app
 EnvironmentFile=/home/ubuntu/app/.env
 ExecStart=/home/ubuntu/app/.venv/bin/gunicorn --config /home/ubuntu/app/gunicorn_conf.py wsgi:application
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
 Sau đó:
 ```bash
+sudo cp deploy/systemd/netflix-app.service /etc/systemd/system/netflix-app.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now netflix-app
 sudo systemctl status netflix-app
 ```
 
 ## 6) (Tùy chọn) Reverse proxy với Nginx
+Bạn có thể dùng mẫu có sẵn trong repo: `deploy/nginx/netflix-app.conf`.
+
 Tạo file `/etc/nginx/sites-available/netflix-app`:
 ```nginx
 server {
@@ -108,6 +116,7 @@ server {
 ```
 Kích hoạt site và reload:
 ```bash
+sudo cp deploy/nginx/netflix-app.conf /etc/nginx/sites-available/netflix-app
 sudo ln -s /etc/nginx/sites-available/netflix-app /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
