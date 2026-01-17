@@ -1,0 +1,7 @@
+.env
+account.txt
+data.db
+__pycache__/
+.venv/
+chrome_profile/
+*.pyc
