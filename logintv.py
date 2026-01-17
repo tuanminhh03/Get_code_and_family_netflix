@@ -537,12 +537,8 @@ def _login_once_pw(
 
 
     # Netflix thường ổn hơn khi headless=False, nhưng server không có X nên cần headless=True.
-    headless = bool(getattr(config, "TUKI_HEADLESS", True))
-    force_headful = bool(getattr(config, "TUKI_FORCE_HEADFUL", False))
-    if force_headful:
-        headless = False
-    elif not os.getenv("DISPLAY"):
-        headless = True
+    headless = False  # LUÔN HIỆN CHROME, KHÔNG CHẠY ẨN
+
 
     try:
         with sync_playwright() as p:
