@@ -146,6 +146,7 @@ sudo systemctl status netflix-app
 sudo journalctl -u netflix-app -f
 ```
 
+
 ## 9) Gỡ lỗi nhanh
 - App không lên → xem `journalctl`.
 - Nginx 502 → kiểm tra port Gunicorn + `proxy_pass`.
@@ -180,6 +181,30 @@ sudo apt install -y google-chrome-stable
 
 Kiểm tra đường dẫn:
 ```bash
+=======
+
+## 9) Gỡ lỗi nhanh
+- App không lên → xem `journalctl`.
+- Nginx 502 → kiểm tra port Gunicorn + `proxy_pass`.
+- Playwright lỗi → chạy lại:
+```bash
+python -m playwright install --with-deps
+```
+
+## 10) Troubleshooting Chrome/Chromium không tìm thấy
+Nếu `which google-chrome-stable` không ra gì, nghĩa là Chrome chưa cài.
+
+### Cài Google Chrome (deb) đúng cách
+```bash
+wget -qO- https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-linux-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+sudo apt update
+sudo apt install -y google-chrome-stable
+```
+
+Kiểm tra đường dẫn:
+```bash
+
 which google-chrome-stable
 ```
 
