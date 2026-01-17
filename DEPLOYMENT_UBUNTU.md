@@ -62,6 +62,10 @@ sudo apt install -y xvfb
 export DISPLAY=:99
 Xvfb :99 -screen 0 1920x1080x24 &
 export TUKI_FORCE_HEADFUL=1
+Nếu dùng `xvfb-run` mà báo lỗi `awk: not found` hoặc `getopt: not found`, cài thêm:
+```
+sudo apt install -y gawk util-linux
+```
 4) Chạy thử nhanh bằng Gunicorn
 gunicorn --config gunicorn_conf.py wsgi:application
 Nếu bind 127.0.0.1:5000 → cần Nginx / SSH tunnel
