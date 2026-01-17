@@ -581,6 +581,9 @@ label small::before{
   min-width:160px;
   flex:1 1 180px;
 }
+.tv-email-meta-item-full{
+  flex:1 1 100%;
+}
 .tv-email-meta-label{
   font-size:11px;
   text-transform:uppercase;
@@ -589,6 +592,18 @@ label small::before{
 }
 .tv-email-meta-value{
   color:#f4f7ff;
+}
+.tv-email-cookies{
+  width:100%;
+  min-height:120px;
+  resize:vertical;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(7,12,22,0.9);
+  color:#f4f7ff;
+  padding:8px;
+  font-size:12px;
+  line-height:1.4;
 }
 .tv-email-list .empty-state{
   padding:16px;
