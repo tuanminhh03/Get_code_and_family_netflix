@@ -25,6 +25,10 @@ def _as_bool(value: str | None, default: bool = True) -> bool:
 # Nếu muốn xem trình duyệt, đặt TUKI_HEADLESS=0 hoặc "false".
 TUKI_HEADLESS = _as_bool(os.getenv('TUKI_HEADLESS'), default=True)
 
+# Bỏ qua check DISPLAY và ép chạy headful (phù hợp khi dùng Xvfb/VNC).
+# Đặt TUKI_FORCE_HEADFUL=1 để bật.
+TUKI_FORCE_HEADFUL = _as_bool(os.getenv("TUKI_FORCE_HEADFUL"), default=False)
+
 # Dùng Chrome profile hiện tại hoặc gắn vào Chrome đang mở.
 # - TUKI_CHROME_USER_DATA_DIR: đường dẫn đến user data dir của Chrome.
 # - TUKI_CHROME_PROFILE_DIR: tên profile (vd: "Default", "Profile 1").

@@ -356,7 +356,10 @@ def _login_once_pw(email: str, tv_code: str, progress: list[str] | None = None):
 
     # Netflix thường ổn hơn khi headless=False, nhưng server không có X nên cần headless=True.
     headless = bool(getattr(config, "TUKI_HEADLESS", True))
-    if not os.getenv("DISPLAY"):
+    force_headful = bool(getattr(config, "TUKI_FORCE_HEADFUL", False))
+    if force_headful:
+        headless = False
+    elif not os.getenv("DISPLAY"):
         headless = True
 
     try:
