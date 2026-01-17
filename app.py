@@ -67,6 +67,7 @@ def ensure_database():
     _ensure_email_nullable()
     _ensure_tv_allowed_column()
     _ensure_tv_login_email_notes_column()
+    _ensure_tv_login_email_cookies_column()
 
 
 def _ensure_email_nullable():
@@ -150,6 +151,23 @@ def _ensure_tv_login_email_notes_column():
         print("[DB] Không thể thêm cột notes cho bảng tv_login_email", flush=True)
 
 
+def _ensure_tv_login_email_cookies_column():
+    try:
+        result = db.session.execute(text("PRAGMA table_info(tv_login_email)")).fetchall()
+    except Exception:
+        return
+
+    has_column = any(row[1] == "cookies" for row in result)
+    if has_column:
+        return
+
+    try:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE tv_login_email ADD COLUMN cookies TEXT"))
+    except Exception:
+        print("[DB] Không thể thêm cột cookies cho bảng tv_login_email", flush=True)
+
+
 def _parse_timestamp_candidates(ts_raw: str):
     if not ts_raw:
         return "", ""
@@ -205,6 +223,7 @@ class ActivityLog(db.Model):
 class TvLoginEmail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
+    cookies = db.Column(db.Text)
     last_used_at = db.Column(db.DateTime, nullable=True)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -686,6 +705,7 @@ def _list_tv_login_emails():
         {
             "id": row.id,
             "email": row.email,
+            "cookies": row.cookies or "",
             "last_used": row.last_used_display,
             "created_at": _format_local_time(row.created_at),
             "status": _tv_email_status(row),
@@ -1723,8 +1743,12 @@ def admin_tv_emails():
     if action == 'add':
         raw_email = request.form.get('email')
         email = _normalize_email(raw_email)
+        cookies = (request.form.get('cookies') or '').strip()
         if not email:
             flash('Vui lòng nhập email để đăng nhập TV.', 'danger')
+            return redirect(next_url)
+        if not cookies:
+            flash('Vui lòng nhập cookies để đăng nhập TV.', 'danger')
             return redirect(next_url)
 
         email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
@@ -1734,10 +1758,12 @@ def admin_tv_emails():
 
         exists = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == email).first()
         if exists:
-            flash('Email đã tồn tại trong danh sách quay vòng.', 'warning')
+            exists.cookies = cookies
+            db.session.commit()
+            flash('Email đã tồn tại, đã cập nhật cookies.', 'info')
             return redirect(next_url)
 
-        db.session.add(TvLoginEmail(email=email))
+        db.session.add(TvLoginEmail(email=email, cookies=cookies))
         db.session.commit()
         flash('Đã thêm email vào danh sách đăng nhập TV.', 'success')
         return redirect(next_url)
@@ -1812,12 +1838,27 @@ def admin_tv_emails():
 
         email_pattern = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
         added = 0
+        updated = 0
         skipped = 0
         invalid = 0
         seen = set()
 
         for line in content.splitlines():
-            candidate = _normalize_email(line)
+            if not line or not line.strip():
+                continue
+            if line.strip().lower().startswith("email") and "cookie" in line.lower():
+                continue
+
+            if "\t" in line:
+                raw_email, raw_cookies = line.split("\t", 1)
+            elif "|" in line:
+                raw_email, raw_cookies = line.split("|", 1)
+            else:
+                raw_email, raw_cookies = line, ""
+
+            candidate = _normalize_email(raw_email)
+            cookies_value = (raw_cookies or "").strip().strip('"')
+
             if not candidate or candidate in seen:
                 if candidate:
                     skipped += 1
@@ -1829,15 +1870,20 @@ def admin_tv_emails():
                 invalid += 1
                 continue
 
-            exists = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == candidate).first()
-            if exists:
-                skipped += 1
+            if not cookies_value:
+                invalid += 1
                 continue
 
-            db.session.add(TvLoginEmail(email=candidate))
+            exists = TvLoginEmail.query.filter(func.lower(TvLoginEmail.email) == candidate).first()
+            if exists:
+                exists.cookies = cookies_value
+                updated += 1
+                continue
+
+            db.session.add(TvLoginEmail(email=candidate, cookies=cookies_value))
             added += 1
 
-        if added:
+        if added or updated:
             db.session.commit()
         else:
             db.session.rollback()
@@ -1845,6 +1891,8 @@ def admin_tv_emails():
         message_parts = []
         if added:
             message_parts.append(f'thêm {added} email mới')
+        if updated:
+            message_parts.append(f'cập nhật {updated} cookies')
         if skipped:
             message_parts.append(f'bỏ qua {skipped} email trùng')
         if invalid:
