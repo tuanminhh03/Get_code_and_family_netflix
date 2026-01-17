@@ -1,7 +1,7 @@
 import os
 import re
 import time
-import random
+import json
 from multiprocessing import Pool
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -30,6 +30,115 @@ MAX_CONCURRENT_PROCESSES = 2
 def _get_tv_password():
     """Lấy mật khẩu TV riêng (nếu đặt). Không fallback ADMIN để tránh chặn nhầm."""
     return os.getenv("TV_PASSWORD") or getattr(config, "TV_PASSWORD", "") or ""
+
+
+def _get_netflix_cookies_path() -> str:
+    return (
+        os.getenv("NETFLIX_COOKIES_FILE")
+        or getattr(config, "NETFLIX_COOKIES_FILE", "")
+        or ""
+    ).strip()
+
+
+def _normalize_same_site(value: str | None) -> str | None:
+    if not value:
+        return None
+    lowered = str(value).strip().lower()
+    if lowered in {"none", "no_restriction", "unspecified"}:
+        return "None"
+    if lowered in {"lax"}:
+        return "Lax"
+    if lowered in {"strict"}:
+        return "Strict"
+    return None
+
+
+def _normalize_cookie(cookie: dict) -> dict | None:
+    name = cookie.get("name")
+    value = cookie.get("value")
+    if not name or value is None:
+        return None
+
+    normalized: dict = {"name": name, "value": value}
+    if cookie.get("url"):
+        normalized["url"] = cookie["url"]
+    if cookie.get("domain"):
+        normalized["domain"] = cookie["domain"]
+    if cookie.get("path"):
+        normalized["path"] = cookie["path"]
+    if "httpOnly" in cookie:
+        normalized["httpOnly"] = bool(cookie["httpOnly"])
+    if "secure" in cookie:
+        normalized["secure"] = bool(cookie["secure"])
+
+    same_site = _normalize_same_site(cookie.get("sameSite"))
+    if same_site:
+        normalized["sameSite"] = same_site
+
+    expires = cookie.get("expires")
+    if expires is None:
+        expires = cookie.get("expiry")
+    if expires is None:
+        expires = cookie.get("expirationDate")
+    if isinstance(expires, (int, float)) and expires > 0:
+        normalized["expires"] = float(expires)
+
+    if "url" not in normalized and "domain" not in normalized:
+        normalized["url"] = "https://www.netflix.com"
+    return normalized
+
+
+def _load_netflix_cookies(path: str) -> list[dict]:
+    if not path:
+        return []
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        return []
+
+    cookies = data.get("cookies") if isinstance(data, dict) else data
+    if not isinstance(cookies, list):
+        return []
+
+    normalized = []
+    for item in cookies:
+        if not isinstance(item, dict):
+            continue
+        normalized_cookie = _normalize_cookie(item)
+        if normalized_cookie:
+            normalized.append(normalized_cookie)
+    return normalized
+
+
+def _confirm_netflix_cookie_login(page):
+    page.goto("https://www.netflix.com/browse", wait_until="domcontentloaded")
+    try:
+        page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
+
+    url = page.url or ""
+    if "/login" in url or "/signup" in url:
+        return False, f"Cookies không hợp lệ hoặc đã hết hạn (URL: {url})."
+
+    success_selectors = [
+        "a[href*='/browse']",
+        "div[data-uia='profile-gate-container']",
+        "div.profile-gate-container",
+        "header[data-uia='header']",
+    ]
+    for sel in success_selectors:
+        try:
+            if page.locator(sel).first.is_visible(timeout=3000):
+                return True, None
+        except Exception:
+            pass
+
+    msg = _extract_netflix_message_pw(page)
+    return False, f"Không xác nhận được login bằng cookies. msg={msg!r} url={url}"
 
 
 def _iter_emails(email: str | None):
@@ -352,7 +461,8 @@ def _login_once_pw(email: str, tv_code: str, progress: list[str] | None = None):
         if progress is not None:
             progress.append(msg)
 
-    selected_ctv = random.choice(CTV_CODES)
+    cookies_path = _get_netflix_cookies_path()
+    cookies = _load_netflix_cookies(cookies_path)
 
     # Netflix thường ổn hơn khi headless=False, nhưng server không có X nên cần headless=True.
     headless = bool(getattr(config, "TUKI_HEADLESS", True))
@@ -380,77 +490,58 @@ def _login_once_pw(email: str, tv_code: str, progress: list[str] | None = None):
 
             netflix_page = context.new_page()
 
-            # --- BƯỚC 1: NETFLIX (BẤM TIẾP TỤC -> ĐỢI OTP) ---
-            push_step("Đang mở trang đăng nhập Netflix.")
-            ok, message, reason = netflix_continue_wait_otp(netflix_page, email, timeout_sec=25)
-            if not ok:
-                push_step(f"Không thể yêu cầu mã đăng nhập: {message}")
-                push_step("Không gửi được mã Netflix, sẽ chuyển sang tài khoản khác.")
+            if not cookies:
+                message = "Chưa có cookies Netflix để đăng nhập."
+                push_step(message)
                 browser.close()
                 return {
                     "success": False,
                     "message": message,
-                    "reason": reason,
+                    "reason": "missing_cookies",
                     "email": email,
                     "steps": progress or [],
                 }
 
-            push_step("Đã hiện ô nhập mã Netflix (OTP).")
+            context.add_cookies(cookies)
 
-            # --- BƯỚC 2: TUKITECH ---
-            push_step("Đang lấy mã đăng nhập từ Tukitech.")
-            tukitech_page = context.new_page()
-            tukitech_prepare_search(tukitech_page, email=email, ctv_code=selected_ctv)
-
-            # --- BƯỚC 3: RETRY LOOP DÁN OTP ---
-            print(f"[{email}] Bắt đầu quy trình...")
-            push_step("Đang xác thực tài khoản trên Netflix.")
-            login_web_success = False
-
-            for attempt in range(1, MAX_RETRIES + 1):
-                login_web_success = get_and_paste_code_pw(netflix_page, tukitech_page)
-                if login_web_success:
-                    print(f"[{email}] -> Đăng nhập Web OK.")
-                    push_step("Đăng nhập web thành công.")
-                    break
-
-                if attempt < MAX_RETRIES:
-                    print(f"[{email}] -> Web Login thất bại (Lần {attempt}). Thử lại sau 15s...")
-                    push_step(f"Đăng nhập web thất bại, thử lại lần {attempt + 1}.")
-                    time.sleep(15)
-
-            # --- BƯỚC 4: NẾU WEB OK -> NHẬP MÃ TV ---
-            if login_web_success:
-                push_step("Đang nhập mã TV.")
-                tv_success, tv_message, tv_reason = enter_tv_code_pw(netflix_page, tv_code)
-
-                if tv_success:
-                    push_step("Đăng nhập TV thành công.")
-                else:
-                    push_step(f"Đăng nhập TV thất bại: {tv_message}")
-
-                result = {
-                    "success": tv_success,
-                    "message": tv_message,
-                    "reason": tv_reason,
-                    "email": email,
-                    "steps": progress or [],
-                }
-                if tv_reason == "tv_login_skip":
-                    push_step("Gặp lỗi đăng nhập bằng điều khiển TV, sẽ đổi sang tài khoản khác.")
-
+            # --- BƯỚC 1: NETFLIX (LOGIN BẰNG COOKIES) ---
+            push_step("Đang đăng nhập Netflix bằng cookies.")
+            ok, message = _confirm_netflix_cookie_login(netflix_page)
+            if not ok:
+                push_step(f"Không thể đăng nhập bằng cookies: {message}")
                 browser.close()
-                return result
+                return {
+                    "success": False,
+                    "message": message,
+                    "reason": "cookies_login_failed",
+                    "email": email,
+                    "steps": progress or [],
+                }
 
-            push_step("Không đăng nhập web thành công, chuyển sang tài khoản khác.")
-            browser.close()
-            return {
-                "success": False,
-                "message": "Không qua được bước đăng nhập Web.",
-                "reason": "web_login_failed",
+            push_step("Đang xác thực tài khoản trên Netflix.")
+            push_step("Đăng nhập web thành công.")
+
+            # --- BƯỚC 2: NHẬP MÃ TV ---
+            push_step("Đang nhập mã TV.")
+            tv_success, tv_message, tv_reason = enter_tv_code_pw(netflix_page, tv_code)
+
+            if tv_success:
+                push_step("Đăng nhập TV thành công.")
+            else:
+                push_step(f"Đăng nhập TV thất bại: {tv_message}")
+
+            result = {
+                "success": tv_success,
+                "message": tv_message,
+                "reason": tv_reason,
                 "email": email,
                 "steps": progress or [],
             }
+            if tv_reason == "tv_login_skip":
+                push_step("Gặp lỗi đăng nhập bằng điều khiển TV, sẽ đổi sang tài khoản khác.")
+
+            browser.close()
+            return result
 
     except Exception as e:
         push_step(f"Lỗi trong quá trình xử lý: {e}")
