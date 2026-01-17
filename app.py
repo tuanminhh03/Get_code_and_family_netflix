@@ -44,6 +44,12 @@ def _terminal_report(title: str, *, level: str = "INFO", details: dict | None = 
             print(f"  - {key}: {value}", flush=True)
 
 
+def _format_steps(steps: list[str] | None) -> str:
+    if not steps:
+        return ""
+    return "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
+
+
 def _customer_table_name():
     try:
         inspector = inspect(db.engine)
@@ -1215,6 +1221,7 @@ def api_login_tv():
                 "email": email,
                 "success": success,
                 "message": message,
+                "steps": _format_steps(steps),
                 "remote_required": remote_required,
                 "invalid_code": invalid_code,
             },
@@ -1416,6 +1423,7 @@ def api_tv_login():
                 "email": chosen_email,
                 "success": success,
                 "message": attempt_message,
+                "steps": _format_steps(steps),
                 "reason": reason,
                 "remote_required": remote_required,
                 "invalid_code": invalid_code,
