@@ -526,8 +526,12 @@ def _login_once_pw(
         if progress is not None:
             progress.append(msg)
 
-    cookies = _load_netflix_cookies_from_text(cookies_text or "")
-    if not cookies:
+    cookies = []
+    cookies_source = "email"
+    if cookies_text is not None:
+        cookies = _load_netflix_cookies_from_text(cookies_text)
+    else:
+        cookies_source = "file"
         cookies_path = _get_netflix_cookies_path()
         cookies = _load_netflix_cookies(cookies_path)
 
@@ -559,7 +563,10 @@ def _login_once_pw(
             netflix_page = context.new_page()
 
             if not cookies:
-                message = "Chưa có cookies Netflix để đăng nhập."
+                if cookies_source == "email":
+                    message = "Chưa có cookies Netflix đã import cho email đăng nhập TV."
+                else:
+                    message = "Chưa có cookies Netflix để đăng nhập."
                 push_step(message)
                 browser.close()
                 return {
