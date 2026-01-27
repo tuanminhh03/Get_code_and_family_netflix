@@ -9,7 +9,7 @@ from flask import (
     flash,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func, inspect, or_, text, case
+from sqlalchemy import func, inspect, or_, text, case, select
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta, date
 from tuki_persistent import TukiPersistent
@@ -242,6 +242,12 @@ class AppSetting(db.Model):
     value = db.Column(db.Text, nullable=True)
 
 
+class RandomEmailPick(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    picked_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 def _get_app_setting(key: str) -> str | None:
     try:
         record = AppSetting.query.filter_by(key=key).first()
@@ -409,6 +415,32 @@ def _normalize_email(value: str):
 
 def _normalize_phone(value: str):
     return re.sub(r"\s+", "", (value or "").strip())
+
+
+def _random_email_source_query():
+    return Customer.query.filter(Customer.email.isnot(None), Customer.email != "")
+
+
+def _random_email_summary():
+    source_subquery = (
+        db.session.query(func.lower(Customer.email).label("email"))
+        .filter(Customer.email.isnot(None), Customer.email != "")
+        .subquery()
+    )
+    total = db.session.query(source_subquery.c.email).count()
+    used = (
+        db.session.query(RandomEmailPick.id)
+        .filter(RandomEmailPick.email.in_(select(source_subquery.c.email)))
+        .count()
+    )
+    remaining = max(total - used, 0)
+    last_pick = RandomEmailPick.query.order_by(RandomEmailPick.picked_at.desc()).first()
+    return {
+        "total": total,
+        "used": used,
+        "remaining": remaining,
+        "last_email": last_pick.email if last_pick else "",
+    }
 
 
 def _log_activity(customer_id: int | None, *, requester_email: str, target_email: str, kind: str, success: bool, message: str):
@@ -1177,6 +1209,7 @@ def admin():
     tv_login_emails = _list_tv_login_emails()
     tv_email_summary = _get_tv_login_summary()
     tv_password_configured = bool(_get_tv_password_setting())
+    random_email_summary = _random_email_summary()
 
     return render_template(
         'admin.html',
@@ -1190,6 +1223,65 @@ def admin():
         tv_emails=tv_login_emails,
         tv_email_summary=tv_email_summary,
         tv_password_configured=tv_password_configured,
+        random_email_summary=random_email_summary,
+    )
+
+
+@app.route('/admin/random-email', methods=['POST'])
+def admin_random_email():
+    if not session.get('is_admin'):
+        return jsonify({"success": False, "message": "Chưa đăng nhập admin."}), 403
+
+    ensure_database()
+
+    used_emails_subquery = db.session.query(RandomEmailPick.email)
+    remaining_query = (
+        _random_email_source_query()
+        .filter(~func.lower(Customer.email).in_(used_emails_subquery))
+        .order_by(func.random())
+    )
+    picked = remaining_query.first()
+
+    if not picked:
+        summary = _random_email_summary()
+        return jsonify(
+            {
+                "success": False,
+                "message": "Không còn email để lấy.",
+                "used": summary["used"],
+                "remaining": summary["remaining"],
+                "total": summary["total"],
+            }
+        )
+
+    normalized_email = _normalize_email(picked.email)
+    if not normalized_email:
+        summary = _random_email_summary()
+        return jsonify(
+            {
+                "success": False,
+                "message": "Email không hợp lệ.",
+                "used": summary["used"],
+                "remaining": summary["remaining"],
+                "total": summary["total"],
+            }
+        ), 400
+
+    db.session.add(RandomEmailPick(email=normalized_email))
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+
+    summary = _random_email_summary()
+    return jsonify(
+        {
+            "success": True,
+            "email": picked.email,
+            "used": summary["used"],
+            "remaining": summary["remaining"],
+            "total": summary["total"],
+        }
     )
 
 

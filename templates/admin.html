@@ -130,6 +130,36 @@
     </section>
 
     <section class="section-grid">
+      <div class="card random-email-card">
+        <div class="card-header">
+          <div>
+            <h2>Lấy email ngẫu nhiên</h2>
+            <p class="subtle">Chọn ngẫu nhiên email trong danh sách, không lặp lại cho đến khi hết.</p>
+          </div>
+        </div>
+        <div class="random-email-body">
+          <div class="random-email-display mono" id="randomEmailDisplay">
+            {% if random_email_summary.last_email %}
+              {{ random_email_summary.last_email }}
+            {% else %}
+              Chưa lấy email nào.
+            {% endif %}
+          </div>
+          <div class="random-email-actions">
+            <button type="button" class="btn-primary" id="randomEmailBtn">Lấy email</button>
+          </div>
+          <div class="random-email-stats">
+            <div class="random-email-stat">
+              <span>Số email đã lấy</span>
+              <strong id="randomEmailUsed">{{ random_email_summary.used }}</strong>
+            </div>
+            <div class="random-email-stat">
+              <span>Số email còn lại</span>
+              <strong id="randomEmailRemaining">{{ random_email_summary.remaining }}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <div class="card-header">
           <h2>Import danh sách email</h2>
