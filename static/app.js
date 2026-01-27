@@ -333,6 +333,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (randomEmailDisplay) {
               randomEmailDisplay.textContent = data.email || '—';
             }
+            if (data?.email && navigator.clipboard) {
+              navigator.clipboard.writeText(data.email).catch(() => {});
+            }
           } else {
             if (randomEmailDisplay) {
               randomEmailDisplay.textContent = data?.message || 'Không thể lấy email.';
