@@ -896,6 +896,47 @@ label small::before{
 .section-grid .tv-email-card{
   grid-column:1 / -1;
 }
+.random-email-card .card-header{
+  align-items:flex-start;
+}
+.random-email-body{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.random-email-display{
+  padding:14px 16px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:rgba(15,23,42,0.35);
+  color:var(--text);
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  font-weight:600;
+}
+.random-email-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.random-email-stats{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap:12px;
+}
+.random-email-stat{
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:rgba(15,23,42,0.2);
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.random-email-stat strong{
+  font-size:20px;
+}
 .admin-stats .mini-card{
   padding:20px;
 }
