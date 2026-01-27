@@ -314,6 +314,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     });
+
+    const randomEmailBtn = document.getElementById('randomEmailBtn');
+    const randomEmailDisplay = document.getElementById('randomEmailDisplay');
+    const randomEmailUsed = document.getElementById('randomEmailUsed');
+    const randomEmailRemaining = document.getElementById('randomEmailRemaining');
+
+    if (randomEmailBtn) {
+      randomEmailBtn.addEventListener('click', async () => {
+        randomEmailBtn.disabled = true;
+        if (randomEmailDisplay) {
+          randomEmailDisplay.textContent = 'Đang lấy email...';
+        }
+        try {
+          const resp = await fetch('/admin/random-email', { method: 'POST' });
+          const data = await resp.json();
+          if (resp.ok && data?.success) {
+            if (randomEmailDisplay) {
+              randomEmailDisplay.textContent = data.email || '—';
+            }
+            if (data?.email && navigator.clipboard) {
+              navigator.clipboard.writeText(data.email).catch(() => {});
+            }
+          } else {
+            if (randomEmailDisplay) {
+              randomEmailDisplay.textContent = data?.message || 'Không thể lấy email.';
+            }
+          }
+          if (randomEmailUsed && typeof data?.used === 'number') {
+            randomEmailUsed.textContent = data.used;
+          }
+          if (randomEmailRemaining && typeof data?.remaining === 'number') {
+            randomEmailRemaining.textContent = data.remaining;
+          }
+        } catch (err) {
+          if (randomEmailDisplay) {
+            randomEmailDisplay.textContent = 'Lỗi khi gọi hệ thống.';
+          }
+        } finally {
+          randomEmailBtn.disabled = false;
+        }
+      });
+    }
   }
 
   if (bulkDeleteForm) {
