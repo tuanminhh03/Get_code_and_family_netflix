@@ -1561,9 +1561,23 @@ def api_tv_login():
         final_raw = result
         final_email = chosen_email
 
-        # Nếu fail kiểu "mail không log được TV" (không phải mã sai / không phải remote / không phải sai mật khẩu)
-        # thì flag để lần sau tránh email này.
-        if (not success) and (not invalid_code) and (not remote_required) and ("mật khẩu" not in message.lower()):
+        # Nếu fail kiểu lỗi account (cookies/Netflix) thì flag để lần sau tránh email này.
+        # Tránh đánh dấu khi reason=None (lỗi tạm thời), vì sẽ làm hết email sau 1 lần thử.
+        permanent_fail_reasons = {
+            "missing_cookies",
+            "cookies_login_failed",
+            "login_failed",
+            "web_login_failed",
+            "login_flow_error",
+            "account_not_found",
+        }
+        if (
+            (not success)
+            and (not invalid_code)
+            and (not remote_required)
+            and ("mật khẩu" not in message.lower())
+            and (reason in permanent_fail_reasons)
+        ):
             _flag_tv_login_failure(chosen_email)
 
         _log_activity(
