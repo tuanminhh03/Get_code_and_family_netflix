@@ -1386,7 +1386,8 @@ def api_login_tv():
             status_code = 400
             break
 
-        _mark_tv_login_email_used(record)
+        # Không đánh dấu "đã sử dụng" khi login thất bại ở luồng admin.
+        # Tránh việc mọi email đều bị ghi last_used_at sau mỗi lần thử.
 
     if not final_email and attempts:
         final_email = attempts[-1]["email"]
