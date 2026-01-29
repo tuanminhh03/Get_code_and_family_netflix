@@ -1017,7 +1017,7 @@ def _login_tv(password: str, code: str, email: str | None = None, expected_passw
         if email:
             return normalized
 
-        if reason in {"login_skip", "tv_login_skip"}:
+        if reason in {"login_skip", "tv_login_skip", "cookies_login_failed", "missing_cookies"}:
             continue
 
         return normalized
@@ -1502,6 +1502,8 @@ def api_tv_login():
     retryable_reasons = {
         "login_skip",
         "tv_login_skip",
+        "cookies_login_failed",
+        "missing_cookies",
         "web_login_failed",
         "tv_login_failed",
         "tv_login_error",
